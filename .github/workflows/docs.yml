@@ -42,7 +42,7 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Upload artifact
         if: github.ref_name == 'master' && github.event_name == 'push'
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ./target/doc
 
