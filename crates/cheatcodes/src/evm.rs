@@ -266,7 +266,12 @@ impl Cheatcode for getNonce_1Call {
 impl Cheatcode for loadCall {
     fn apply_stateful(&self, ccx: &mut CheatsCtxt) -> Result {
         let Self { target, slot } = *self;
-        ccx.ensure_not_precompile(&target)?;
+        // vm.load is read-only; permit it on precompile addresses so
+        // tests can directly inspect storage of stateful precompiles
+        // (Base's TokenFactory / PolicyRegistry / ActivationRegistry,
+        // and the prefix-dispatched B-20 tokens). The vm.etch and
+        // vm.store guards below stay in place because those would
+        // corrupt the precompile's state.
 
         let (db, journal, _) = ccx.ecx.as_db_env_and_journal();
         journal.load_account(db, target)?;
