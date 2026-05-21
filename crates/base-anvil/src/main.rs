@@ -13,7 +13,7 @@ use std::{
 };
 
 use alloy_primitives::Address;
-use anvil::{NodeArgs, try_spawn};
+use anvil::{cmd::NodeArgs, try_spawn};
 use base_common_chains::BaseUpgrade;
 use clap::Parser;
 use eyre::Result;
