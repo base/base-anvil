@@ -25,6 +25,13 @@ alloy-primitives = { workspace = true, features = [
     "rlp",
 ] }
 
+# Base precompile dispatch (--base flag). Path deps on the user's local
+# base/base clone; see base-anvil/README.md for layout. Pulling these into
+# foundry-evm-networks is what makes base precompile dispatch work from
+# `forge test` (and `cast`), not just from `anvil`.
+base-common-precompiles = { path = "../../../../base/crates/common/precompiles" }
+base-common-chains = { path = "../../../../base/crates/common/chains" }
+
 revm = { workspace = true, features = [
     "std",
     "serde",
