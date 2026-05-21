@@ -16,17 +16,29 @@ use alloy_primitives::{Address, address, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
     ActivationRegistry, ActivationRegistryStorage, B20TokenPrecompile, PolicyRegistryPrecompile,
-    TokenFactory,
+    PolicyRegistryStorage, TokenFactory, TokenFactoryStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// The B-20 precompile addresses Base reserves. Used for both label injection
-/// (so trace output names them) and for setting up the dispatch entries below.
-const BASE_TOKEN_FACTORY_ADDRESS: Address = address!("0xb20F00000000000000000000000000000000000f");
-const BASE_POLICY_REGISTRY_ADDRESS: Address =
-    address!("0xb000000000000000000000000000000000000001");
+/// The Base precompile singleton addresses, sourced from base_common_precompiles
+/// re-exports so the trace labels and warming list never drift from the actual
+/// install addresses in base/base.
+const BASE_TOKEN_FACTORY_ADDRESS: Address = TokenFactoryStorage::ADDRESS;
+const BASE_POLICY_REGISTRY_ADDRESS: Address = PolicyRegistryStorage::ADDRESS;
+const BASE_ACTIVATION_REGISTRY_ADDRESS: Address = ActivationRegistryStorage::ADDRESS;
+
+/// Singleton Base precompile addresses to pre-warm with sentinel bytecode so that
+/// Solidity high-level wrapper calls survive the codegen `extcodesize(target) > 0`
+/// check. B-20 token addresses (every `0xb2..` address claimed by the prefix
+/// dispatcher) are NOT pre-warmed here — tests that touch concrete B-20 tokens
+/// must etch the same sentinel themselves, since the address space is unbounded.
+const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] = &[
+    BASE_TOKEN_FACTORY_ADDRESS,
+    BASE_POLICY_REGISTRY_ADDRESS,
+    BASE_ACTIVATION_REGISTRY_ADDRESS,
+];
 
 /// Default activation admin for the local dev chain, mirroring
 /// `BasePrecompiles`'s default in `base/base/crates/common/precompiles/src/provider.rs`
@@ -201,5 +213,13 @@ impl NetworkConfigs {
     #[doc(hidden)]
     pub fn _base_upgrade_hint() -> BaseUpgrade {
         BaseUpgrade::Beryl
+    }
+
+    /// Returns the static list of Base singleton precompile addresses that the
+    /// executor pre-warms with sentinel bytecode. See the docstring on
+    /// [`BASE_PRECOMPILE_SENTINEL_ADDRESSES`] for the scope and why B-20 tokens
+    /// are intentionally excluded.
+    pub fn base_precompile_sentinel_addresses(&self) -> &'static [Address] {
+        if self.base { BASE_PRECOMPILE_SENTINEL_ADDRESSES } else { &[] }
     }
 }

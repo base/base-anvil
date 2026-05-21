@@ -135,6 +135,28 @@ impl Executor {
             },
         );
 
+        // Pre-warm Base custom precompile addresses with the EIP-3541-reserved sentinel
+        // byte (0xef) so that Solidity high-level wrapper calls survive the codegen
+        // `extcodesize(target) > 0` check. REVM's call dispatcher consults precompiles
+        // before bytecode, so the sentinel is never executed - it only satisfies
+        // EXTCODESIZE and the wrapper-revert path that precedes CALL. Mirrors the
+        // pre-warming pattern in tempo-foundry::warm_tempo_precompile_accounts.
+        if inspector.networks.is_base() {
+            let sentinel = Bytecode::new_raw(Bytes::from_static(&[0xef]));
+            let code_hash = sentinel.hash_slow();
+            for addr in inspector.networks.base_precompile_sentinel_addresses() {
+                backend.insert_account_info(
+                    *addr,
+                    revm::state::AccountInfo {
+                        code: Some(sentinel.clone()),
+                        code_hash,
+                        nonce: 1,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
         Self { backend, env, inspector, gas_limit, legacy_assertions }
     }
 
