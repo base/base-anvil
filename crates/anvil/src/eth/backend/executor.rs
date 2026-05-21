@@ -391,7 +391,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
             self.networks.inject_precompiles(evm.precompiles_mut());
 
             if let Some(factory) = &self.precompile_factory {
-                evm.precompiles_mut().extend_precompiles(factory.precompiles());
+                factory.install(evm.precompiles_mut());
             }
 
             let cheats = Arc::new(self.cheats.clone());

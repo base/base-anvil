@@ -1,0 +1,33 @@
+[package]
+name = "base-anvil"
+description = "Anvil with Base custom precompiles (TokenFactory, B-20 tokens, PolicyRegistry, ActivationRegistry) registered into the EVM, so Foundry tests can fork-test against Base chains that host these precompiles natively."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "base-anvil"
+path = "src/main.rs"
+
+[dependencies]
+# Foundry's anvil as a library — re-exported under our binary
+anvil = { path = "../anvil" }
+
+# Base precompiles — path dependency on the user's local base/base clone.
+# Adjust this path if base/base lives elsewhere on your machine; for CI or
+# release, switch to a `git = "..."` dep pinned to a specific commit.
+base-common-precompiles = { path = "../../../base/crates/common/precompiles" }
+base-common-chains = { path = "../../../base/crates/common/chains" }
+
+# Standard CLI / runtime deps reused from foundry's workspace
+alloy-evm.workspace = true
+alloy-primitives.workspace = true
+clap = { version = "4", features = ["derive", "env"] }
+eyre.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

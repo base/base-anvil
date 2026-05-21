@@ -26,6 +26,7 @@ members = [
     "crates/primitives/",
     "crates/script-sequence/",
     "crates/test-utils/",
+    "crates/base-anvil/",
 ]
 resolver = "2"
 
@@ -316,17 +317,20 @@ alloy-hardforks = { version = "0.4.7", default-features = false }
 alloy-op-hardforks = { version = "0.4.7", default-features = false }
 
 ## alloy-core
-alloy-dyn-abi = "1.5.2"
-alloy-json-abi = "1.5.2"
-alloy-primitives = { version = "1.5.2", features = [
+## NOTE (base-anvil fork): bumped from 1.5.2 to 1.5.6 to match base/base
+## (revm 34 + alloy-evm 0.27 + alloy-primitives 1.5.6). The 1.5.2 → 1.5.6
+## delta is patch-level and should be source-compatible.
+alloy-dyn-abi = "1.5.6"
+alloy-json-abi = "1.5.6"
+alloy-primitives = { version = "1.5.6", features = [
     "getrandom",
     "rand",
     "map-fxhash",
     "map-foldhash",
 ] }
-alloy-sol-macro-expander = "1.5.2"
-alloy-sol-macro-input = "1.5.2"
-alloy-sol-types = "1.5.2"
+alloy-sol-macro-expander = "1.5.6"
+alloy-sol-macro-input = "1.5.6"
+alloy-sol-types = "1.5.6"
 
 alloy-chains = "0.2"
 alloy-rlp = "0.3"
@@ -338,8 +342,13 @@ op-alloy-rpc-types = "0.23.1"
 op-alloy-flz = "0.13.1"
 
 ## alloy-evm
-alloy-evm = "0.26.3"
-alloy-op-evm = "0.26.3"
+## NOTE (base-anvil fork): bumped from 0.26.3 to 0.27.2 to match base/base's
+## base-common-precompiles which uses the alloy-evm 0.27 PrecompilesMap /
+## DynPrecompile API surface. This is a minor bump; the breaking changes
+## across alloy-evm 0.26 → 0.27 are limited and most likely transparent
+## for foundry's call sites. Watch for compile errors when rebasing.
+alloy-evm = "0.27.2"
+alloy-op-evm = "0.27.2"
 
 # revm
 revm = { version = "34.0.0", default-features = false }

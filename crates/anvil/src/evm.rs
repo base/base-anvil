@@ -1,4 +1,4 @@
-use alloy_evm::precompiles::DynPrecompile;
+use alloy_evm::precompiles::{DynPrecompile, PrecompilesMap};
 use alloy_primitives::Address;
 use std::fmt::Debug;
 
@@ -7,6 +7,17 @@ use std::fmt::Debug;
 pub trait PrecompileFactory: Send + Sync + Unpin + Debug {
     /// Returns a set of precompiles to extend the EVM with.
     fn precompiles(&self) -> Vec<(Address, DynPrecompile)>;
+
+    /// Installs precompiles into the given map. Default implementation
+    /// calls [`Self::precompiles`] and extends the map.
+    ///
+    /// Implementors can override this for finer-grained control — for
+    /// example, registering a `set_precompile_lookup` for dynamic or
+    /// prefix-based address dispatch (the pattern Base's B-20 token
+    /// precompile uses to claim every address with the `0xb2` prefix).
+    fn install(&self, precompiles: &mut PrecompilesMap) {
+        precompiles.extend_precompiles(self.precompiles());
+    }
 }
 
 #[cfg(test)]
