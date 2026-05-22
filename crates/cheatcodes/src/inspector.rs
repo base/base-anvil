@@ -710,6 +710,14 @@ impl Cheatcodes {
 
         let gas = Gas::new(call.gas_limit);
         let curr_depth = ecx.journaled_state.depth();
+        if let Some(expected) = &mut self.expected_revert
+            && call.target_address != CHEATCODE_ADDRESS
+            && call.target_address != HARDHAT_CONSOLE_ADDRESS
+        {
+            // Native precompile calls do not initialize an interpreter frame, so the
+            // `initialize_interp` hook below never observes their lower call depth.
+            expected.max_depth = max(curr_depth.saturating_add(1), expected.max_depth);
+        }
 
         // At the root call to test function or script `run()`/`setUp()` functions, we are
         // decreasing sender nonce to ensure that it matches on-chain nonce once we start

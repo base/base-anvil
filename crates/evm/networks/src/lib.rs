@@ -16,9 +16,9 @@ use alloy_primitives::{Address, address, map::AddressHashMap};
 use alloy_evm::precompiles::DynPrecompile;
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationRegistry, ActivationRegistryStorage, B20SecurityPrecompile, B20TokenPrecompile,
-    PolicyRegistryPrecompile, PolicyRegistryStorage, TokenFactory, TokenFactoryStorage,
-    TokenVariant,
+    ActivationRegistry, ActivationRegistryStorage, B20SecurityPrecompile,
+    B20StablecoinPrecompile, B20TokenPrecompile, PolicyRegistryPrecompile,
+    PolicyRegistryStorage, TokenFactory, TokenFactoryStorage, TokenVariant,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -57,13 +57,12 @@ const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
 /// function is required because `set_precompile_lookup` takes a
 /// function pointer (not a closure) AND replaces rather than chains
 /// successive lookups, so we must dispatch all B-20 variants in one
-/// match. Mirror the upstream behavior exactly: Stablecoin currently
-/// returns None pending its prefix-dispatch landing in base/base.
+/// match.
 fn b20_token_lookup(address: &Address) -> Option<DynPrecompile> {
     match TokenVariant::from_address(*address)? {
         TokenVariant::B20 => Some(B20TokenPrecompile::create_precompile(*address)),
+        TokenVariant::Stablecoin => Some(B20StablecoinPrecompile::create_precompile(*address)),
         TokenVariant::Security => Some(B20SecurityPrecompile::create_precompile(*address)),
-        TokenVariant::Stablecoin => None,
     }
 }
 
@@ -183,8 +182,7 @@ impl NetworkConfigs {
             // Mirrors `BasePrecompiles::install` for the Beryl upgrade in
             // base/base/crates/common/precompiles/src/provider.rs. Three
             // singleton precompiles plus a single combined B-20 prefix
-            // dispatcher (Default + Security; Stablecoin returns None
-            // pending the variant's prefix-dispatch landing in base/base).
+            // dispatcher.
             // `set_precompile_lookup` replaces rather than chains, so the
             // combined `b20_token_lookup` covers all variants in one shot.
             let admin = Some(self.base_activation_admin());
