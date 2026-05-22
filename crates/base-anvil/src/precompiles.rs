@@ -19,8 +19,17 @@ use alloy_primitives::Address;
 use anvil::PrecompileFactory;
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationRegistry, B20TokenPrecompile, PolicyRegistryPrecompile, TokenFactory,
+    ActivationRegistry, B20SecurityPrecompile, B20TokenPrecompile, PolicyRegistryPrecompile,
+    TokenFactory, TokenVariant,
 };
+
+fn b20_token_lookup(address: &Address) -> Option<DynPrecompile> {
+    match TokenVariant::from_address(*address)? {
+        TokenVariant::B20 => Some(B20TokenPrecompile::create_precompile(*address)),
+        TokenVariant::Security => Some(B20SecurityPrecompile::create_precompile(*address)),
+        TokenVariant::Stablecoin => None,
+    }
+}
 
 /// Installs Base's custom precompiles (B-20, factory, policy, activation)
 /// into Anvil's EVM at the canonical addresses.
@@ -62,7 +71,7 @@ impl PrecompileFactory for BasePrecompileFactory {
     fn install(&self, precompiles: &mut PrecompilesMap) {
         if self.upgrade >= BaseUpgrade::Beryl {
             TokenFactory::install(precompiles);
-            B20TokenPrecompile::install(precompiles);
+            precompiles.set_precompile_lookup(b20_token_lookup);
             PolicyRegistryPrecompile::install(precompiles);
             ActivationRegistry::install(precompiles, self.activation_admin);
         }
