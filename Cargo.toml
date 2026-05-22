@@ -464,6 +464,15 @@ idna_adapter = "=1.1.0"
 # https://github.com/rust-cli/rexpect/pull/106
 rexpect = { git = "https://github.com/rust-cli/rexpect", rev = "2ed0b1898d7edaf6a85bedbae71a01cc578958fc" }
 
+# Local override for base-anvil's base/base git dep. Uncomment + adjust the
+# path to point at a local base/base checkout instead of the pinned remote.
+# Useful when iterating on a base/base branch that isn't pushed yet, or when
+# applying an unmerged patch (e.g. the dispatch.rs ActivationFeature::B20Stablecoin
+# fix). The path is relative to this workspace root.
+# [patch."https://github.com/base/base.git"]
+# base-common-precompiles = { path = "../base/crates/common/precompiles" }
+# base-common-chains = { path = "../base/crates/common/chains" }
+
 ## alloy-core
 # alloy-dyn-abi = { path = "../../alloy-rs/core/crates/dyn-abi" }
 # alloy-json-abi = { path = "../../alloy-rs/core/crates/json-abi" }

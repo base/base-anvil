@@ -25,12 +25,12 @@ alloy-primitives = { workspace = true, features = [
     "rlp",
 ] }
 
-# Base precompile dispatch (--base flag). Path deps on the user's local
-# base/base clone; see base-anvil/README.md for layout. Pulling these into
-# foundry-evm-networks is what makes base precompile dispatch work from
-# `forge test` (and `cast`), not just from `anvil`.
-base-common-precompiles = { path = "../../../../base/crates/common/precompiles" }
-base-common-chains = { path = "../../../../base/crates/common/chains" }
+# Base precompile dispatch (--base flag). Pinned to a known-good commit on
+# github.com/base/base; bump via ./script/bump-base.sh. To iterate against a
+# local base/base checkout instead, uncomment the [patch] block at the bottom
+# of the workspace root Cargo.toml.
+base-common-precompiles = { git = "https://github.com/base/base.git", rev = "6fcce780144b31da208809161e4f9f2bd936c3de" }
+base-common-chains = { git = "https://github.com/base/base.git", rev = "6fcce780144b31da208809161e4f9f2bd936c3de" }
 
 revm = { workspace = true, features = [
     "std",
