@@ -532,5 +532,5 @@ solar-ast = { package = "solar-ast", git = "https://github.com/paradigmxyz/solar
 solar-sema = { package = "solar-sema", git = "https://github.com/paradigmxyz/solar", rev = "530f129" }
 
 [patch."https://github.com/base/base.git"]
-base-common-precompiles = { path = "/Users/andreasbigger/dev/base/base3/crates/common/precompiles" }
-base-common-chains = { path = "/Users/andreasbigger/dev/base/base3/crates/common/chains" }
+base-common-precompiles = { path = "../base/crates/common/precompiles" }
+base-common-chains = { path = "../base/crates/common/chains" }
