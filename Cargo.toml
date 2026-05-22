@@ -26,7 +26,6 @@ members = [
     "crates/primitives/",
     "crates/script-sequence/",
     "crates/test-utils/",
-    "crates/base-anvil/",
 ]
 resolver = "2"
 
