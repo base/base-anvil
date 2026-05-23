@@ -299,5 +299,6 @@ pub fn evm_spec_id(evm_version: EvmVersion) -> SpecId {
         EvmVersion::Cancun => SpecId::CANCUN,
         EvmVersion::Prague => SpecId::PRAGUE,
         EvmVersion::Osaka => SpecId::OSAKA,
+        EvmVersion::Amsterdam => SpecId::AMSTERDAM,
     }
 }

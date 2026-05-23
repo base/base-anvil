@@ -10,15 +10,14 @@ use alloy_chains::{
     NamedChain::{Chiado, Gnosis, Moonbase, Moonbeam, MoonbeamDev, Moonriver, Rsk, RskTestnet},
 };
 use alloy_eips::eip1559::BaseFeeParams;
-use alloy_evm::precompiles::PrecompilesMap;
+use alloy_evm::precompiles::{DynPrecompile, PrecompilesMap};
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use alloy_primitives::{Address, address, map::AddressHashMap};
-use alloy_evm::precompiles::DynPrecompile;
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationRegistry, ActivationRegistryStorage, B20SecurityPrecompile,
-    B20StablecoinPrecompile, B20TokenPrecompile, PolicyRegistryPrecompile,
-    PolicyRegistryStorage, TokenFactory, TokenFactoryStorage, TokenVariant,
+    ActivationRegistry, ActivationRegistryStorage, B20Factory, B20FactoryStorage,
+    B20SecurityPrecompile, B20StablecoinPrecompile, B20TokenPrecompile, B20Variant,
+    PolicyRegistryPrecompile, PolicyRegistryStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -27,7 +26,7 @@ use std::collections::BTreeMap;
 /// The Base precompile singleton addresses, sourced from base_common_precompiles
 /// re-exports so the trace labels and warming list never drift from the actual
 /// install addresses in base/base.
-const BASE_TOKEN_FACTORY_ADDRESS: Address = TokenFactoryStorage::ADDRESS;
+const BASE_TOKEN_FACTORY_ADDRESS: Address = B20FactoryStorage::ADDRESS;
 const BASE_POLICY_REGISTRY_ADDRESS: Address = PolicyRegistryStorage::ADDRESS;
 const BASE_ACTIVATION_REGISTRY_ADDRESS: Address = ActivationRegistryStorage::ADDRESS;
 
@@ -36,11 +35,8 @@ const BASE_ACTIVATION_REGISTRY_ADDRESS: Address = ActivationRegistryStorage::ADD
 /// check. B-20 token addresses (every `0xb2..` address claimed by the prefix
 /// dispatcher) are NOT pre-warmed here — tests that touch concrete B-20 tokens
 /// must etch the same sentinel themselves, since the address space is unbounded.
-const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] = &[
-    BASE_TOKEN_FACTORY_ADDRESS,
-    BASE_POLICY_REGISTRY_ADDRESS,
-    BASE_ACTIVATION_REGISTRY_ADDRESS,
-];
+const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] =
+    &[BASE_TOKEN_FACTORY_ADDRESS, BASE_POLICY_REGISTRY_ADDRESS, BASE_ACTIVATION_REGISTRY_ADDRESS];
 
 /// Default activation admin for the local dev chain, mirroring
 /// `BasePrecompiles`'s default in `base/base/crates/common/precompiles/src/provider.rs`
@@ -59,10 +55,10 @@ const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
 /// successive lookups, so we must dispatch all B-20 variants in one
 /// match.
 fn b20_token_lookup(address: &Address) -> Option<DynPrecompile> {
-    match TokenVariant::from_address(*address)? {
-        TokenVariant::B20 => Some(B20TokenPrecompile::create_precompile(*address)),
-        TokenVariant::Stablecoin => Some(B20StablecoinPrecompile::create_precompile(*address)),
-        TokenVariant::Security => Some(B20SecurityPrecompile::create_precompile(*address)),
+    match B20Variant::from_address(*address)? {
+        B20Variant::B20 => Some(B20TokenPrecompile::create_precompile(*address)),
+        B20Variant::Stablecoin => Some(B20StablecoinPrecompile::create_precompile(*address)),
+        B20Variant::Security => Some(B20SecurityPrecompile::create_precompile(*address)),
     }
 }
 
@@ -186,7 +182,7 @@ impl NetworkConfigs {
             // `set_precompile_lookup` replaces rather than chains, so the
             // combined `b20_token_lookup` covers all variants in one shot.
             let admin = Some(self.base_activation_admin());
-            TokenFactory::install(precompiles);
+            B20Factory::install(precompiles);
             precompiles.set_precompile_lookup(b20_token_lookup);
             PolicyRegistryPrecompile::install(precompiles);
             ActivationRegistry::install(precompiles, admin);
@@ -202,10 +198,7 @@ impl NetworkConfigs {
         if self.base {
             labels.insert(BASE_TOKEN_FACTORY_ADDRESS, "BaseTokenFactory".to_string());
             labels.insert(BASE_POLICY_REGISTRY_ADDRESS, "BasePolicyRegistry".to_string());
-            labels.insert(
-                ActivationRegistryStorage::ADDRESS,
-                "BaseActivationRegistry".to_string(),
-            );
+            labels.insert(ActivationRegistryStorage::ADDRESS, "BaseActivationRegistry".to_string());
         }
         labels
     }

@@ -3,6 +3,7 @@
 use crate::eth::pool::transactions::PoolTransaction;
 use alloy_consensus::crypto::RecoveryError;
 use alloy_evm::overrides::StateOverrideError;
+use alloy_op_evm::OpTxError;
 use alloy_primitives::{B256, Bytes, SignatureError};
 use alloy_rpc_types::BlockNumberOrTag;
 use alloy_signer::Error as SignerError;
@@ -150,6 +151,7 @@ where
             },
             EVMError::Database(err) => err.into(),
             EVMError::Custom(err) => Self::Message(err),
+            EVMError::CustomAny(err) => Self::Message(err.to_string()),
         }
     }
 }
@@ -176,6 +178,25 @@ where
             },
             EVMError::Database(err) => err.into(),
             EVMError::Custom(err) => Self::Message(err),
+            EVMError::CustomAny(err) => Self::Message(err.to_string()),
+        }
+    }
+}
+
+impl<T> From<EVMError<T, OpTxError>> for BlockchainError
+where
+    T: Into<Self>,
+{
+    fn from(err: EVMError<T, OpTxError>) -> Self {
+        match err {
+            EVMError::Transaction(err) => InvalidTransactionError::from(err).into(),
+            EVMError::Header(err) => match err {
+                InvalidHeader::ExcessBlobGasNotSet => Self::ExcessBlobGasNotSet,
+                InvalidHeader::PrevrandaoNotSet => Self::PrevrandaoNotSet,
+            },
+            EVMError::Database(err) => err.into(),
+            EVMError::Custom(err) => Self::Message(err),
+            EVMError::CustomAny(err) => Self::Message(err.to_string()),
         }
     }
 }
@@ -393,6 +414,12 @@ impl From<OpTransactionError> for InvalidTransactionError {
             | OpTransactionError::HaltedDepositPostRegolith => Self::DepositTxErrorPostRegolith,
             OpTransactionError::MissingEnvelopedTx => Self::MissingEnvelopedTx,
         }
+    }
+}
+
+impl From<OpTxError> for InvalidTransactionError {
+    fn from(value: OpTxError) -> Self {
+        value.0.into()
     }
 }
 /// Helper trait to easily convert results to rpc results

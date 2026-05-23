@@ -4,7 +4,9 @@ use std::{
 };
 
 use crate::{
-    Env, InspectorExt, backend::DatabaseExt, constants::DEFAULT_CREATE2_DEPLOYER_CODEHASH,
+    Env, InspectorExt,
+    backend::DatabaseExt,
+    constants::{DEFAULT_CREATE2_DEPLOYER_CODEHASH, DEFAULT_CREATE2_DEPLOYER_RUNTIME_CODE},
 };
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_evm::{Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
@@ -12,6 +14,7 @@ use alloy_primitives::{Address, Bytes, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
     Context, Journal,
+    bytecode::Bytecode,
     context::{
         BlockEnv, CfgEnv, ContextTr, CreateScheme, Evm as RevmEvm, JournalTr, LocalContext,
         LocalContextTr, TxEnv,
@@ -56,7 +59,7 @@ pub fn new_evm_with_inspector<'db, I: InspectorExt>(
         inner: RevmEvm::new_with_inspector(
             ctx,
             inspector,
-            EthInstructions::default(),
+            EthInstructions::new_mainnet_with_spec(spec),
             get_precompiles(spec),
         ),
     };
@@ -75,7 +78,7 @@ pub fn new_evm_with_existing_context<'a>(
         inner: RevmEvm::new_with_inspector(
             ctx,
             inspector,
-            EthInstructions::default(),
+            EthInstructions::new_mainnet_with_spec(spec),
             get_precompiles(spec),
         ),
     };
@@ -105,12 +108,16 @@ fn get_create2_factory_call_inputs(
     CallInputs {
         caller: inputs.caller(),
         bytecode_address: deployer,
-        known_bytecode: None,
+        known_bytecode: (
+            DEFAULT_CREATE2_DEPLOYER_CODEHASH,
+            Bytecode::new_raw(Bytes::from_static(DEFAULT_CREATE2_DEPLOYER_RUNTIME_CODE)),
+        ),
         target_address: deployer,
         scheme: CallScheme::Call,
         value: CallValue::Transfer(inputs.value()),
         input: CallInput::Bytes(calldata.into()),
         gas_limit: inputs.gas_limit(),
+        reservoir: 0,
         is_static: false,
         return_memory_offset: 0..0,
     }
@@ -165,6 +172,10 @@ impl<'db, I: InspectorExt> Evm for FoundryEvm<'db, I> {
 
     fn block(&self) -> &BlockEnv {
         &self.inner.block
+    }
+
+    fn cfg_env(&self) -> &CfgEnv<Self::Spec> {
+        &self.inner.ctx.cfg
     }
 
     fn chain_id(&self) -> u64 {
