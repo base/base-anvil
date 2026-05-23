@@ -37,8 +37,8 @@ use alloy_eips::{
 };
 use alloy_evm::overrides::{OverrideBlockHashes, apply_state_overrides};
 use alloy_network::{
-    AnyRpcBlock, AnyRpcTransaction, BlockResponse, ReceiptResponse, TransactionBuilder,
-    TransactionBuilder4844, TransactionResponse, eip2718::Decodable2718,
+    AnyRpcBlock, AnyRpcTransaction, BlockResponse, NetworkTransactionBuilder, ReceiptResponse,
+    TransactionBuilder, TransactionBuilder4844, TransactionResponse, eip2718::Decodable2718,
 };
 use alloy_primitives::{
     Address, B64, B256, Bytes, Signature, TxHash, TxKind, U64, U256,
@@ -2467,6 +2467,15 @@ impl EthApi {
                     }
                 })
                 .unwrap_or_default(),
+            network: if env.networks.is_base() {
+                Some("base".to_string())
+            } else if env.networks.is_celo() {
+                Some("celo".to_string())
+            } else if env.networks.is_optimism() {
+                Some("optimism".to_string())
+            } else {
+                None
+            },
         })
     }
 
@@ -2479,6 +2488,8 @@ impl EthApi {
 
         Ok(Metadata {
             client_version: CLIENT_VERSION.to_string(),
+            client_semver: None,
+            client_commit_sha: None,
             chain_id: self.backend.chain_id().to::<u64>(),
             latest_block_hash: self.backend.best_hash(),
             latest_block_number: self.backend.best_number(),
@@ -3582,6 +3593,7 @@ impl TryFrom<Result<(InstructionResult, Option<Output>, u128, State)>> for GasEs
                 | InstructionResult::CreateContractSizeLimit
                 | InstructionResult::CreateContractStartingWithEF
                 | InstructionResult::CreateInitCodeSizeLimit
+                | InstructionResult::InvalidImmediateEncoding
                 | InstructionResult::FatalExternalError => Ok(Self::EvmError(exit)),
             },
         }

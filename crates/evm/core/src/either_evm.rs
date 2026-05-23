@@ -1,11 +1,11 @@
 use alloy_evm::{Database, EthEvm, Evm, EvmEnv, eth::EthEvmContext};
-use alloy_op_evm::OpEvm;
+use alloy_op_evm::{OpEvm, OpEvmContext, OpTx, OpTxError};
 use alloy_primitives::{Address, Bytes};
-use op_revm::{OpContext, OpHaltReason, OpSpecId, OpTransaction, OpTransactionError};
+use op_revm::{OpHaltReason, OpSpecId, OpTransactionError};
 use revm::{
     DatabaseCommit, Inspector,
     context::{
-        BlockEnv, TxEnv,
+        BlockEnv, CfgEnv,
         result::{EVMError, ExecResultAndState, ExecutionResult, ResultAndState},
     },
     handler::PrecompileProvider,
@@ -47,15 +47,15 @@ where
 impl<DB, I, P> EitherEvm<DB, I, P>
 where
     DB: Database,
-    I: Inspector<EthEvmContext<DB>> + Inspector<OpContext<DB>>,
+    I: Inspector<EthEvmContext<DB>> + Inspector<OpEvmContext<DB>>,
     P: PrecompileProvider<EthEvmContext<DB>, Output = InterpreterResult>
-        + PrecompileProvider<OpContext<DB>, Output = InterpreterResult>,
+        + PrecompileProvider<OpEvmContext<DB>, Output = InterpreterResult>,
 {
     /// Converts the [`EthEvm::transact`] result to [`EitherEvmResult`].
     fn map_eth_result(
         &self,
         result: Result<ExecResultAndState<ExecutionResult>, EVMError<DB::Error>>,
-    ) -> EitherEvmResult<DB::Error, OpHaltReason, OpTransactionError> {
+    ) -> EitherEvmResult<DB::Error, OpHaltReason, OpTxError> {
         match result {
             Ok(result) => Ok(ResultAndState {
                 result: result.result.map_haltreason(OpHaltReason::Base),
@@ -69,7 +69,7 @@ where
     fn map_exec_result(
         &self,
         result: Result<ExecutionResult, EVMError<DB::Error>>,
-    ) -> EitherExecResult<DB::Error, OpHaltReason, OpTransactionError> {
+    ) -> EitherExecResult<DB::Error, OpHaltReason, OpTxError> {
         match result {
             Ok(result) => {
                 // Map the halt reason
@@ -79,15 +79,16 @@ where
         }
     }
 
-    /// Maps [`EVMError<DBError>`] to [`EVMError<DBError, OpTransactionError>`].
-    fn map_eth_err(&self, err: EVMError<DB::Error>) -> EVMError<DB::Error, OpTransactionError> {
+    /// Maps [`EVMError<DBError>`] to [`EVMError<DBError, OpTxError>`].
+    fn map_eth_err(&self, err: EVMError<DB::Error>) -> EVMError<DB::Error, OpTxError> {
         match err {
             EVMError::Transaction(invalid_tx) => {
-                EVMError::Transaction(OpTransactionError::Base(invalid_tx))
+                EVMError::Transaction(OpTxError(OpTransactionError::Base(invalid_tx)))
             }
             EVMError::Database(e) => EVMError::Database(e),
             EVMError::Header(e) => EVMError::Header(e),
             EVMError::Custom(e) => EVMError::Custom(e),
+            EVMError::CustomAny(e) => EVMError::CustomAny(e),
         }
     }
 }
@@ -95,14 +96,14 @@ where
 impl<DB, I, P> Evm for EitherEvm<DB, I, P>
 where
     DB: Database,
-    I: Inspector<EthEvmContext<DB>> + Inspector<OpContext<DB>>,
+    I: Inspector<EthEvmContext<DB>> + Inspector<OpEvmContext<DB>>,
     P: PrecompileProvider<EthEvmContext<DB>, Output = InterpreterResult>
-        + PrecompileProvider<OpContext<DB>, Output = InterpreterResult>,
+        + PrecompileProvider<OpEvmContext<DB>, Output = InterpreterResult>,
 {
     type DB = DB;
-    type Error = EVMError<DB::Error, OpTransactionError>;
+    type Error = EVMError<DB::Error, OpTxError>;
     type HaltReason = OpHaltReason;
-    type Tx = OpTransaction<TxEnv>;
+    type Tx = OpTx;
     type Inspector = I;
     type Precompiles = P;
     type Spec = SpecId;
@@ -112,6 +113,13 @@ where
         match self {
             Self::Eth(evm) => evm.block(),
             Self::Op(evm) => evm.block(),
+        }
+    }
+
+    fn cfg_env(&self) -> &CfgEnv<Self::Spec> {
+        match self {
+            Self::Eth(evm) => evm.cfg_env(),
+            Self::Op(_) => panic!("OP cfg env uses OpSpecId and cannot be borrowed as SpecId"),
         }
     }
 
@@ -231,7 +239,7 @@ where
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
         match self {
             Self::Eth(evm) => {
-                let eth = evm.transact(tx.into_tx_env().base);
+                let eth = evm.transact(tx.into_tx_env().0.base);
                 self.map_eth_result(eth)
             }
             Self::Op(evm) => evm.transact(tx),
@@ -247,7 +255,7 @@ where
     {
         match self {
             Self::Eth(evm) => {
-                let eth = evm.transact_commit(tx.into_tx_env().base);
+                let eth = evm.transact_commit(tx.into_tx_env().0.base);
                 self.map_exec_result(eth)
             }
             Self::Op(evm) => evm.transact_commit(tx),
@@ -260,7 +268,7 @@ where
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
         match self {
             Self::Eth(evm) => {
-                let res = evm.transact_raw(tx.base);
+                let res = evm.transact_raw(tx.0.base);
                 self.map_eth_result(res)
             }
             Self::Op(evm) => evm.transact_raw(tx),

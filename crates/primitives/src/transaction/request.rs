@@ -1,6 +1,7 @@
 use alloy_consensus::EthereumTypedTransaction;
 use alloy_network::{
-    BuildResult, NetworkWallet, TransactionBuilder, TransactionBuilder4844, TransactionBuilderError,
+    BuildResult, NetworkTransactionBuilder, NetworkWallet, TransactionBuilder,
+    TransactionBuilder4844, TransactionBuilderError,
 };
 use alloy_primitives::{Address, B256, ChainId, TxKind, U256};
 use alloy_rpc_types::{AccessList, TransactionInputKind, TransactionRequest};
@@ -285,8 +286,14 @@ impl From<FoundryTxEnvelope> for FoundryTransactionRequest {
     }
 }
 
+impl From<op_alloy_rpc_types::Transaction<FoundryTxEnvelope>> for FoundryTransactionRequest {
+    fn from(tx: op_alloy_rpc_types::Transaction<FoundryTxEnvelope>) -> Self {
+        tx.inner.into_inner().into()
+    }
+}
+
 // TransactionBuilder trait implementation for FoundryNetwork
-impl TransactionBuilder<FoundryNetwork> for FoundryTransactionRequest {
+impl TransactionBuilder for FoundryTransactionRequest {
     fn chain_id(&self) -> Option<ChainId> {
         self.as_ref().chain_id
     }
@@ -399,7 +406,9 @@ impl TransactionBuilder<FoundryNetwork> for FoundryTransactionRequest {
     fn set_access_list(&mut self, access_list: AccessList) {
         self.as_mut().access_list = Some(access_list);
     }
+}
 
+impl NetworkTransactionBuilder<FoundryNetwork> for FoundryTransactionRequest {
     fn complete_type(&self, ty: FoundryTxType) -> Result<(), Vec<&'static str>> {
         match ty {
             FoundryTxType::Legacy => self.as_ref().complete_legacy(),
@@ -419,7 +428,7 @@ impl TransactionBuilder<FoundryNetwork> for FoundryTransactionRequest {
     fn can_build(&self) -> bool {
         self.as_ref().can_build()
             || get_deposit_tx_parts(&self.as_ref().other).is_ok()
-            || self.is_tempo()
+            || self.complete_tempo().is_ok()
     }
 
     fn output_tx_type(&self) -> FoundryTxType {

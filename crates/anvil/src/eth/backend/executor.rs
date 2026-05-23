@@ -27,7 +27,7 @@ use alloy_evm::{
     eth::EthEvmContext,
     precompiles::{DynPrecompile, Precompile, PrecompilesMap},
 };
-use alloy_op_evm::OpEvmFactory;
+use alloy_op_evm::{OpEvmContext, OpEvmFactory, OpTx};
 use alloy_primitives::{B256, Bloom, BloomInput, Log};
 use anvil_core::eth::{
     block::{BlockInfo, create_block},
@@ -40,7 +40,7 @@ use foundry_evm::{
 };
 use foundry_evm_networks::NetworkConfigs;
 use foundry_primitives::{FoundryReceiptEnvelope, FoundryTxEnvelope};
-use op_revm::{OpContext, OpTransaction};
+use op_revm::OpTransaction;
 use revm::{
     Database, Inspector,
     context::{Block as RevmBlock, Cfg, TxEnv},
@@ -262,6 +262,8 @@ impl<DB: Db + ?Sized, V: TransactionValidator> TransactionExecutor<'_, DB, V> {
             excess_blob_gas,
             withdrawals_root: is_shanghai.then_some(EMPTY_WITHDRAWALS),
             requests_hash: is_prague.then_some(EMPTY_REQUESTS_HASH),
+            block_access_list_hash: None,
+            slot_number: None,
         };
 
         let block = create_block(header, transactions);
@@ -407,7 +409,7 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
 
             trace!(target: "backend", "[{:?}] executing", transaction.hash());
             // transact and commit the transaction
-            match evm.transact_commit(env.tx) {
+            match evm.transact_commit(OpTx(env.tx)) {
                 Ok(exec_result) => exec_result,
                 Err(err) => {
                     warn!(target: "backend", "[{:?}] failed to execute: {:?}", transaction.hash(), err);
@@ -438,14 +440,17 @@ impl<DB: Db + ?Sized, V: TransactionValidator> Iterator for &mut TransactionExec
         inspector.print_logs();
 
         let (exit_reason, gas_used, out, logs) = match exec_result {
-            ExecutionResult::Success { reason, gas_used, logs, output, .. } => {
-                (reason.into(), gas_used, Some(output), Some(logs))
+            ExecutionResult::Success { reason, gas, logs, output } => {
+                (reason.into(), gas.tx_gas_used(), Some(output), Some(logs))
             }
-            ExecutionResult::Revert { gas_used, output } => {
-                (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
-            }
-            ExecutionResult::Halt { reason, gas_used } => {
-                (op_haltreason_to_instruction_result(reason), gas_used, None, None)
+            ExecutionResult::Revert { gas, output, logs } => (
+                InstructionResult::Revert,
+                gas.tx_gas_used(),
+                Some(Output::Call(output)),
+                Some(logs),
+            ),
+            ExecutionResult::Halt { reason, gas, logs } => {
+                (op_haltreason_to_instruction_result(reason), gas.tx_gas_used(), None, Some(logs))
             }
         };
 
@@ -498,7 +503,7 @@ pub fn new_evm_with_inspector<DB, I>(
 ) -> EitherEvm<DB, I, PrecompilesMap>
 where
     DB: Database<Error = DatabaseError> + Debug,
-    I: Inspector<EthEvmContext<DB>> + Inspector<OpContext<DB>>,
+    I: Inspector<EthEvmContext<DB>> + Inspector<OpEvmContext<DB>>,
 {
     if env.networks.is_optimism() {
         let evm_env = EvmEnv::new(

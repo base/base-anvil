@@ -311,18 +311,19 @@ impl ResolvedEtherscanConfig {
         }
 
         let api_url = into_url(&api_url)?;
-        let client = reqwest::Client::builder()
-            .user_agent(ETHERSCAN_USER_AGENT)
-            .tls_built_in_root_certs(api_url.scheme() == "https")
-            .build()?;
+        let client = reqwest::Client::builder().user_agent(ETHERSCAN_USER_AGENT).build()?;
         let mut client_builder = foundry_block_explorers::Client::builder()
             .with_client(client)
             .with_api_key(api_key)
             .with_cache(cache, Duration::from_secs(24 * 60 * 60));
-        if let Some(browser_url) = browser_url {
+        if let Some(ref browser_url) = browser_url {
             client_builder = client_builder.with_url(browser_url)?;
         }
-        client_builder.chain(chain)?.build()
+        client_builder = client_builder.with_api_url(api_url.as_str())?;
+        if browser_url.is_none() {
+            client_builder = client_builder.with_url(api_url.as_str())?;
+        }
+        client_builder.build()
     }
 }
 

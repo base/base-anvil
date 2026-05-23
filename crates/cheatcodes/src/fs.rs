@@ -388,6 +388,7 @@ fn deploy_code(
             value.unwrap_or(U256::ZERO),
             bytecode.into(),
             ccx.gas_limit,
+            0,
         ),
         ccx,
     )?;

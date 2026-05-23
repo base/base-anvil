@@ -96,6 +96,7 @@ impl MaybeImpersonatedTransaction {
         RpcTransaction {
             block_hash: None,
             block_number: None,
+            block_timestamp: None,
             transaction_index: None,
             effective_gas_price: None,
             inner: Recovered::new_unchecked(inner_envelope, from),

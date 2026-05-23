@@ -33,7 +33,7 @@ jobs:
     secrets: inherit
 
   doctest:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -50,7 +50,7 @@ jobs:
       - run: cargo test --workspace --doc
 
   typos:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -61,7 +61,7 @@ jobs:
       - uses: crate-ci/typos@65120634e79d8374d1aa2f27e54baa0c364fff5a # v1
 
   shellcheck:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
@@ -74,7 +74,7 @@ jobs:
         run: ./.github/scripts/shellcheck.sh
 
   clippy:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -94,7 +94,7 @@ jobs:
           RUSTFLAGS: -Dwarnings
 
   rustfmt:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -109,7 +109,7 @@ jobs:
       - run: cargo fmt --all --check
 
   forge-fmt:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -128,7 +128,7 @@ jobs:
         run: ./.github/scripts/format.sh --check
 
   crate-checks:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -152,34 +152,6 @@ jobs:
     permissions:
       contents: read
 
-  codeql:
-    name: analyze (${{ matrix.language }})
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - language: actions
-            build-mode: none
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: "/language:${{matrix.language}}"
-
   ci-success:
     runs-on: ubuntu-latest
     if: always()
@@ -194,7 +166,6 @@ jobs:
       - forge-fmt
       - crate-checks
       - deny
-      - codeql
     timeout-minutes: 30
     steps:
       - name: Decide whether the needed jobs succeeded or failed

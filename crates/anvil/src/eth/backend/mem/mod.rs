@@ -51,12 +51,13 @@ use alloy_evm::{
 };
 use alloy_network::{
     AnyHeader, AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope, AnyTxType,
-    EthereumWallet, ReceiptResponse, TransactionBuilder, UnknownTxEnvelope,
+    EthereumWallet, NetworkTransactionBuilder, ReceiptResponse, UnknownTxEnvelope,
     UnknownTypedTransaction,
 };
+use alloy_op_evm::{OpEvmContext, OpTx};
 use alloy_primitives::{
     Address, B256, Bytes, TxHash, TxKind, U64, U256, address, hex, keccak256, logs_bloom,
-    map::{AddressMap, HashMap},
+    map::{AddressMap, HashMap, U256Map},
 };
 use alloy_rpc_types::{
     AccessList, Block as AlloyBlock, BlockId, BlockNumberOrTag as BlockNumber, BlockTransactions,
@@ -107,7 +108,7 @@ use foundry_primitives::{
 };
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use op_alloy_consensus::DEPOSIT_TX_TYPE_ID;
-use op_revm::{OpContext, OpHaltReason, OpTransaction};
+use op_revm::{OpHaltReason, OpTransaction};
 use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
 use revm::{
     DatabaseCommit, Inspector,
@@ -1179,7 +1180,7 @@ impl Backend {
     where
         DB: DatabaseRef + ?Sized,
         I: Inspector<EthEvmContext<WrapDatabaseRef<&'db DB>>>
-            + Inspector<OpContext<WrapDatabaseRef<&'db DB>>>,
+            + Inspector<OpEvmContext<WrapDatabaseRef<&'db DB>>>,
         WrapDatabaseRef<&'db DB>: Database<Error = DatabaseError>,
     {
         let mut evm = new_evm_with_inspector(WrapDatabaseRef(db), env, inspector);
@@ -1225,17 +1226,20 @@ impl Backend {
         let db = self.db.read().await;
         let mut inspector = self.build_inspector();
         let mut evm = self.new_evm_with_inspector_ref(&**db, &env, &mut inspector);
-        let ResultAndState { result, state } = evm.transact(env.tx)?;
+        let ResultAndState { result, state } = evm.transact(OpTx(env.tx))?;
         let (exit_reason, gas_used, out, logs) = match result {
-            ExecutionResult::Success { reason, gas_used, logs, output, .. } => {
-                (reason.into(), gas_used, Some(output), Some(logs))
+            ExecutionResult::Success { reason, gas, logs, output } => {
+                (reason.into(), gas.tx_gas_used(), Some(output), Some(logs))
             }
-            ExecutionResult::Revert { gas_used, output } => {
-                (InstructionResult::Revert, gas_used, Some(Output::Call(output)), None)
-            }
-            ExecutionResult::Halt { reason, gas_used } => {
+            ExecutionResult::Revert { gas, output, logs } => (
+                InstructionResult::Revert,
+                gas.tx_gas_used(),
+                Some(Output::Call(output)),
+                Some(logs),
+            ),
+            ExecutionResult::Halt { reason, gas, logs } => {
                 let eth_reason = op_haltreason_to_instruction_result(reason);
-                (eth_reason, gas_used, None, None)
+                (eth_reason, gas.tx_gas_used(), None, Some(logs))
             }
         };
 
@@ -1718,7 +1722,7 @@ impl Backend {
                         );
 
                         trace!(target: "backend", env=?env.evm_env, spec=?env.evm_env.spec_id(),"simulate evm env");
-                        evm.transact(env.tx)?
+                        evm.transact(OpTx(env.tx.clone()))?
                     } else {
                         let mut evm = self.new_evm_with_inspector_ref(
                             &cache_db,
@@ -1726,7 +1730,7 @@ impl Backend {
                             &mut inspector,
                         );
                         trace!(target: "backend", env=?env.evm_env, spec=?env.evm_env.spec_id(),"simulate evm env");
-                        evm.transact(env.tx)?
+                        evm.transact(OpTx(env.tx.clone()))?
                     };
                     trace!(target: "backend", ?result, ?request, "simulate call");
 
@@ -1737,7 +1741,7 @@ impl Backend {
 
                     // commit the transaction
                     cache_db.commit(state);
-                    gas_used += result.gas_used();
+                    gas_used += result.tx_gas_used();
 
                     // create the transaction from a request
                     let from = request.from.unwrap_or_default();
@@ -1764,12 +1768,14 @@ impl Backend {
                     let return_data = result.output().cloned().unwrap_or_default();
                     let sim_res = SimCallResult {
                         return_data,
-                        gas_used: result.gas_used(),
+                        gas_used: result.tx_gas_used(),
+                        max_used_gas: None,
                         status: result.is_success(),
                         error: result.is_success().not().then(|| {
                             alloy_rpc_types::simulate::SimulateError {
                                 code: -3200,
                                 message: "execution failed".to_string(),
+                                data: None,
                             }
                         }),
                         logs: result.clone()
@@ -1876,16 +1882,16 @@ impl Backend {
 
         let env = self.build_call_env(request, fee_details, block_env);
         let mut evm = self.new_evm_with_inspector_ref(state, &env, &mut inspector);
-        let ResultAndState { result, state } = evm.transact(env.tx)?;
+        let ResultAndState { result, state } = evm.transact(OpTx(env.tx))?;
         let (exit_reason, gas_used, out) = match result {
-            ExecutionResult::Success { reason, gas_used, output, .. } => {
-                (reason.into(), gas_used, Some(output))
+            ExecutionResult::Success { reason, gas, output, .. } => {
+                (reason.into(), gas.tx_gas_used(), Some(output))
             }
-            ExecutionResult::Revert { gas_used, output } => {
-                (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
+            ExecutionResult::Revert { gas, output, .. } => {
+                (InstructionResult::Revert, gas.tx_gas_used(), Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used } => {
-                (op_haltreason_to_instruction_result(reason), gas_used, None)
+            ExecutionResult::Halt { reason, gas, .. } => {
+                (op_haltreason_to_instruction_result(reason), gas.tx_gas_used(), None)
             }
         };
         drop(evm);
@@ -1936,7 +1942,8 @@ impl Backend {
                             let env = self.build_call_env(request, fee_details, block);
                             let mut evm =
                                 self.new_evm_with_inspector_ref(&cache_db, &env, &mut inspector);
-                            let ResultAndState { result, state: _ } = evm.transact(env.tx)?;
+                            let ResultAndState { result, state: _ } =
+                                evm.transact(OpTx(env.tx.clone()))?;
 
                             drop(evm);
 
@@ -1949,7 +1956,7 @@ impl Backend {
 
                             Ok(tracing_inspector
                                 .into_geth_builder()
-                                .geth_call_traces(call_config, result.gas_used())
+                                .geth_call_traces(call_config, result.tx_gas_used())
                                 .into())
                         }
                         GethDebugBuiltInTracerType::PreStateTracer => {
@@ -1966,7 +1973,7 @@ impl Backend {
                             let env = self.build_call_env(request, fee_details, block);
                             let mut evm =
                                 self.new_evm_with_inspector_ref(&cache_db, &env, &mut inspector);
-                            let result = evm.transact(env.tx)?;
+                            let result = evm.transact(OpTx(env.tx.clone()))?;
 
                             drop(evm);
 
@@ -1989,7 +1996,6 @@ impl Backend {
                     }
                     #[cfg(feature = "js-tracer")]
                     GethDebugTracerType::JsTracer(code) => {
-                        use alloy_evm::IntoTxEnv;
                         let config = tracer_config.into_json();
                         let mut inspector =
                             revm_inspectors::tracing::js::JsInspector::new(code, config)
@@ -1998,10 +2004,10 @@ impl Backend {
                         let env = self.build_call_env(request, fee_details, block.clone());
                         let mut evm =
                             self.new_evm_with_inspector_ref(&cache_db, &env, &mut inspector);
-                        let result = evm.transact(env.tx.clone())?;
+                        let result = evm.transact(OpTx(env.tx.clone()))?;
                         let res = evm
                             .inspector_mut()
-                            .json_result(result, &env.tx.into_tx_env(), &block, &cache_db)
+                            .json_result(result, &env.tx, &block, &cache_db)
                             .map_err(|err| BlockchainError::Message(err.to_string()))?;
 
                         Ok(GethTrace::JS(res))
@@ -2016,17 +2022,17 @@ impl Backend {
 
             let env = self.build_call_env(request, fee_details, block);
             let mut evm = self.new_evm_with_inspector_ref(&cache_db, &env, &mut inspector);
-            let ResultAndState { result, state: _ } = evm.transact(env.tx)?;
+            let ResultAndState { result, state: _ } = evm.transact(OpTx(env.tx))?;
 
             let (exit_reason, gas_used, out) = match result {
-                ExecutionResult::Success { reason, gas_used, output, .. } => {
-                    (reason.into(), gas_used, Some(output))
+                ExecutionResult::Success { reason, gas, output, .. } => {
+                    (reason.into(), gas.tx_gas_used(), Some(output))
                 }
-                ExecutionResult::Revert { gas_used, output } => {
-                    (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
+                ExecutionResult::Revert { gas, output, .. } => {
+                    (InstructionResult::Revert, gas.tx_gas_used(), Some(Output::Call(output)))
                 }
-                ExecutionResult::Halt { reason, gas_used } => {
-                    (op_haltreason_to_instruction_result(reason), gas_used, None)
+                ExecutionResult::Halt { reason, gas, .. } => {
+                    (op_haltreason_to_instruction_result(reason), gas.tx_gas_used(), None)
                 }
             };
 
@@ -2058,16 +2064,16 @@ impl Backend {
 
         let env = self.build_call_env(request, fee_details, block_env);
         let mut evm = self.new_evm_with_inspector_ref(state, &env, &mut inspector);
-        let ResultAndState { result, state: _ } = evm.transact(env.tx)?;
+        let ResultAndState { result, state: _ } = evm.transact(OpTx(env.tx))?;
         let (exit_reason, gas_used, out) = match result {
-            ExecutionResult::Success { reason, gas_used, output, .. } => {
-                (reason.into(), gas_used, Some(output))
+            ExecutionResult::Success { reason, gas, output, .. } => {
+                (reason.into(), gas.tx_gas_used(), Some(output))
             }
-            ExecutionResult::Revert { gas_used, output } => {
-                (InstructionResult::Revert, gas_used, Some(Output::Call(output)))
+            ExecutionResult::Revert { gas, output, .. } => {
+                (InstructionResult::Revert, gas.tx_gas_used(), Some(Output::Call(output)))
             }
-            ExecutionResult::Halt { reason, gas_used } => {
-                (op_haltreason_to_instruction_result(reason), gas_used, None)
+            ExecutionResult::Halt { reason, gas, .. } => {
+                (op_haltreason_to_instruction_result(reason), gas.tx_gas_used(), None)
             }
         };
         drop(evm);
@@ -2694,7 +2700,7 @@ impl Backend {
     ) -> Result<T, BlockchainError>
     where
         for<'a> I: Inspector<EthEvmContext<WrapDatabaseRef<&'a CacheDB<Box<&'a StateDb>>>>>
-            + Inspector<OpContext<WrapDatabaseRef<&'a CacheDB<Box<&'a StateDb>>>>>
+            + Inspector<OpEvmContext<WrapDatabaseRef<&'a CacheDB<Box<&'a StateDb>>>>>
             + 'a,
         for<'a> F:
             FnOnce(ResultAndState<OpHaltReason>, CacheDB<Box<&'a StateDb>>, I, TxEnv, Env) -> T,
@@ -2781,7 +2787,7 @@ impl Backend {
             let mut evm = self.new_evm_with_inspector_ref(&cache_db, &env, &mut inspector);
 
             let result = evm
-                .transact(tx_env.clone())
+                .transact(OpTx(tx_env.clone()))
                 .map_err(|err| BlockchainError::Message(err.to_string()))?;
 
             Ok(f(result, cache_db, inspector, tx_env.base, env))
@@ -3750,6 +3756,7 @@ pub fn transaction_build(
                         .as_ref()
                         .map(|block| B256::from(keccak256(alloy_rlp::encode(&block.header)))),
                     block_number: block.as_ref().map(|block| block.header.number),
+                    block_timestamp: block.as_ref().map(|block| block.header.timestamp),
                     transaction_index: info.as_ref().map(|info| info.transaction_index),
                     effective_gas_price: None,
                 };
@@ -3807,6 +3814,7 @@ pub fn transaction_build(
         inner: Recovered::new_unchecked(envelope, from),
         block_hash: block.as_ref().map(|block| block.header.hash_slow()),
         block_number: block.as_ref().map(|block| block.header.number),
+        block_timestamp: block.as_ref().map(|block| block.header.timestamp),
         transaction_index: info.as_ref().map(|info| info.transaction_index),
         // deprecated
         effective_gas_price: Some(effective_gas_price),
@@ -3819,7 +3827,7 @@ pub fn transaction_build(
 /// `storage_key` is the hash of the desired storage key, meaning
 /// this will only work correctly under a secure trie.
 /// `storage_key` == keccak(key)
-pub fn prove_storage(storage: &HashMap<U256, U256>, keys: &[B256]) -> Vec<Vec<Bytes>> {
+pub fn prove_storage(storage: &U256Map<U256>, keys: &[B256]) -> Vec<Vec<Bytes>> {
     let keys: Vec<_> = keys.iter().map(|key| Nibbles::unpack(keccak256(key))).collect();
 
     let mut builder = HashBuilder::default().with_proof_retainer(ProofRetainer::new(keys.clone()));
