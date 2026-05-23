@@ -5246,6 +5246,7 @@ mod tests {
                     optimize: Some(VyperOptimizationMode::Codesize),
                     path: Some("/path/to/vyper".into()),
                     experimental_codegen: Some(true),
+                    ..Default::default()
                 }
             );
 
