@@ -33,7 +33,7 @@ jobs:
     secrets: inherit
 
   doctest:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -50,7 +50,7 @@ jobs:
       - run: cargo test --workspace --doc
 
   typos:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -61,7 +61,7 @@ jobs:
       - uses: crate-ci/typos@65120634e79d8374d1aa2f27e54baa0c364fff5a # v1
 
   shellcheck:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
@@ -74,7 +74,7 @@ jobs:
         run: ./.github/scripts/shellcheck.sh
 
   clippy:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -94,7 +94,7 @@ jobs:
           RUSTFLAGS: -Dwarnings
 
   rustfmt:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -109,7 +109,7 @@ jobs:
       - run: cargo fmt --all --check
 
   forge-fmt:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -128,7 +128,7 @@ jobs:
         run: ./.github/scripts/format.sh --check
 
   crate-checks:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read

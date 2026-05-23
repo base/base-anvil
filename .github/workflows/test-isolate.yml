@@ -25,7 +25,7 @@ jobs:
   # Run flaky tests with isolation enabled
   flaky:
     name: flaky tests (isolate)
-    runs-on: depot-ubuntu-latest-16
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
