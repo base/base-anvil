@@ -6,8 +6,8 @@ use std::str::FromStr;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::Parser), command(next_help_heading = "Server options"))]
 pub struct ServerConfig {
-    /// The cors `allow_origin` header
-    #[cfg_attr(feature = "clap", arg(long, default_value = "*"))]
+    /// The CORS `allow_origin` header.
+    #[cfg_attr(feature = "clap", arg(long, default_value = "http://localhost"))]
     pub allow_origin: HeaderValueWrapper,
 
     /// Disable CORS.
@@ -36,7 +36,7 @@ impl ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            allow_origin: "*".parse::<HeaderValue>().unwrap().into(),
+            allow_origin: HeaderValue::from_static("http://localhost").into(),
             no_cors: false,
             no_request_size_limit: false,
         }
@@ -90,5 +90,18 @@ impl From<HeaderValueWrapper> for HeaderValue {
 impl From<HeaderValue> for HeaderValueWrapper {
     fn from(header: HeaderValue) -> Self {
         Self(header)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_allow_origin_is_not_wildcard() {
+        assert_eq!(
+            ServerConfig::default().allow_origin.0,
+            HeaderValue::from_static("http://localhost")
+        );
     }
 }

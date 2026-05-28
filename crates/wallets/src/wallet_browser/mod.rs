@@ -55,6 +55,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_rejects_missing_session_token_in_development_mode() {
+        let mut server = BrowserWalletServer::new(0, false, DEFAULT_TIMEOUT, true);
+        let client = reqwest::Client::new();
+        server.start().await.unwrap();
+
+        let resp = client
+            .get(format!("http://localhost:{}/api/connection", server.port()))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
+
+        server.stop().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_connect_disconnect_wallet() {
         let mut server = create_server();
         let client = client_with_token(&server);

@@ -24,12 +24,7 @@ pub async fn build_router(state: Arc<BrowserWalletState>, port: u16) -> Router {
         .route_layer(middleware::from_fn_with_state(state.clone(), require_session_token))
         .with_state(state.clone());
 
-    let mut origins = vec![format!("http://127.0.0.1:{port}").parse().unwrap()];
-
-    // Allow default port of 5173 in development mode.
-    if state.is_development() {
-        origins.push("https://localhost:5173".to_string().parse().unwrap());
-    }
+    let origins = vec![format!("http://127.0.0.1:{port}").parse().unwrap()];
 
     let security_headers = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -82,11 +77,6 @@ async fn require_session_token(
     next: Next,
 ) -> Result<Response, StatusCode> {
     if req.method() == Method::OPTIONS {
-        return Ok(next.run(req).await);
-    }
-
-    // In development mode, skip session token check.
-    if state.is_development() {
         return Ok(next.run(req).await);
     }
 
