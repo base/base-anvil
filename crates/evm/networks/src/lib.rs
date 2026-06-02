@@ -56,9 +56,8 @@ const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
 /// match.
 fn b20_token_lookup(address: &Address) -> Option<DynPrecompile> {
     match B20Variant::from_address(*address)? {
-        B20Variant::B20 => Some(B20TokenPrecompile::create_precompile(*address)),
         B20Variant::Stablecoin => Some(B20StablecoinPrecompile::create_precompile(*address)),
-        B20Variant::Security => Some(B20AssetPrecompile::create_precompile(*address)),
+        B20Variant::Asset => Some(B20AssetPrecompile::create_precompile(*address)),
     }
 }
 
