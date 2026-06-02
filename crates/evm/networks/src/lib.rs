@@ -16,7 +16,7 @@ use alloy_primitives::{Address, address, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
     ActivationRegistry, ActivationRegistryStorage, B20Factory, B20FactoryStorage,
-    B20SecurityPrecompile, B20StablecoinPrecompile, B20TokenPrecompile, B20Variant,
+    B20AssetPrecompile, B20StablecoinPrecompile, B20TokenPrecompile, B20Variant,
     PolicyRegistryPrecompile, PolicyRegistryStorage,
 };
 use clap::Parser;
@@ -58,7 +58,7 @@ fn b20_token_lookup(address: &Address) -> Option<DynPrecompile> {
     match B20Variant::from_address(*address)? {
         B20Variant::B20 => Some(B20TokenPrecompile::create_precompile(*address)),
         B20Variant::Stablecoin => Some(B20StablecoinPrecompile::create_precompile(*address)),
-        B20Variant::Security => Some(B20SecurityPrecompile::create_precompile(*address)),
+        B20Variant::Security => Some(B20AssetPrecompile::create_precompile(*address)),
     }
 }
 
