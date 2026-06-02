@@ -16,7 +16,7 @@ use alloy_primitives::{Address, address, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
     ActivationRegistry, ActivationRegistryStorage, B20Factory, B20FactoryStorage,
-    B20AssetPrecompile, B20StablecoinPrecompile, B20TokenPrecompile, B20Variant,
+    B20AssetPrecompile, B20StablecoinPrecompile, B20Variant,
     PolicyRegistryPrecompile, PolicyRegistryStorage,
 };
 use clap::Parser;
