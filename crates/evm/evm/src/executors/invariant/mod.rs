@@ -550,7 +550,7 @@ impl<'a> InvariantExecutor<'a> {
                 progress.inc(1);
                 // Display metrics in progress bar.
                 if edge_coverage_enabled {
-                    progress.set_message(format!("{}", &corpus_manager.metrics));
+                    progress.set_message(format!("{}", corpus_manager.metrics));
                 }
             } else if edge_coverage_enabled
                 && last_metrics_report.elapsed() > DURATION_BETWEEN_METRICS_REPORT

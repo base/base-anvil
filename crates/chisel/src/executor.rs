@@ -375,8 +375,8 @@ fn format_event_definition(event_definition: &pt::EventDefinition) -> Result<Str
         "event".red(),
         SolidityHelper::new().highlight(&format!(
             "{}({})",
-            &event.name,
-            &event
+            event.name,
+            event
                 .inputs
                 .iter()
                 .map(|param| format!(
@@ -386,7 +386,7 @@ fn format_event_definition(event_definition: &pt::EventDefinition) -> Result<Str
                     if param.name.is_empty() {
                         String::default()
                     } else {
-                        format!(" {}", &param.name)
+                        format!(" {}", param.name)
                     },
                 ))
                 .collect::<Vec<_>>()
@@ -521,13 +521,10 @@ impl Type {
             pt::Expression::AddressLiteral(_, _) => Some(Self::Builtin(DynSolType::Address)),
             pt::Expression::HexNumberLiteral(_, s, _) => {
                 match s.parse::<Address>() {
-                    Ok(addr) => {
-                        if *s == addr.to_checksum(None) {
+                    Ok(addr)
+                        if *s == addr.to_checksum(None) => {
                             Some(Self::Builtin(DynSolType::Address))
-                        } else {
-                            Some(Self::Builtin(DynSolType::Uint(256)))
-                        }
-                    },
+                        },
                     _ => {
                         Some(Self::Builtin(DynSolType::Uint(256)))
                     }

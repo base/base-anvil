@@ -242,7 +242,7 @@ impl<P: Provider<AnyNetwork> + Clone + Unpin> Cast<P> {
             let mut s =
                 vec![format!("gas used: {}", access_list.gas_used), "access list:".to_string()];
             for al in access_list.access_list.0 {
-                s.push(format!("- address: {}", &al.address.to_checksum(None)));
+                s.push(format!("- address: {}", al.address.to_checksum(None)));
                 if !al.storage_keys.is_empty() {
                     s.push("  keys:".to_string());
                     for key in al.storage_keys {
@@ -1874,7 +1874,7 @@ impl SimpleCast {
         let mut topics = vec![event.selector()];
         let mut data_tokens: Vec<u8> = Vec::new();
 
-        for (input, token) in event.inputs.iter().zip(tokens.into_iter()) {
+        for (input, token) in event.inputs.iter().zip(tokens) {
             if input.indexed {
                 let ty = DynSolType::parse(&input.ty)?;
                 if matches!(
