@@ -130,12 +130,11 @@ async fn test_send_value_raw_deposit_transaction() {
     };
     let other = serde_json::to_value(op_fields).unwrap().try_into().unwrap();
     let tx = WithOtherFields { inner: tx, other };
-    let tx_envelope =
-        <WithOtherFields<TransactionRequest> as NetworkTransactionBuilder<AnyNetwork>>::build(
-            tx, &signer,
-        )
-        .await
-        .unwrap();
+    let tx_envelope = <WithOtherFields<TransactionRequest> as NetworkTransactionBuilder<
+        AnyNetwork,
+    >>::build(tx, &signer)
+    .await
+    .unwrap();
     let mut tx_buffer = Vec::with_capacity(tx_envelope.encode_2718_len());
     tx_envelope.encode_2718(&mut tx_buffer);
     let tx_encoded = tx_buffer.as_slice();
