@@ -28,7 +28,7 @@ async fn can_send_eip4844_transaction() {
 
     let sidecar: SidecarBuilder<SimpleCoder> = SidecarBuilder::from_slice(b"Hello World");
 
-    let sidecar = sidecar.build().unwrap();
+    let sidecar: BlobTransactionSidecar = sidecar.build().unwrap();
     let tx = TransactionRequest::default()
         .with_from(from)
         .with_to(to)
@@ -121,7 +121,7 @@ async fn can_send_multiple_blobs_in_one_tx() {
     let large_data = vec![1u8; DATA_GAS_PER_BLOB as usize * 5]; // 131072 is DATA_GAS_PER_BLOB and also BYTE_PER_BLOB
     let sidecar: SidecarBuilder<SimpleCoder> = SidecarBuilder::from_slice(&large_data);
 
-    let sidecar = sidecar.build().unwrap();
+    let sidecar: BlobTransactionSidecar = sidecar.build().unwrap();
 
     let tx = TransactionRequest::default()
         .with_from(from)
@@ -159,7 +159,7 @@ async fn cannot_exceed_six_blobs() {
     let large_data = vec![1u8; DATA_GAS_PER_BLOB as usize * 6]; // 131072 is DATA_GAS_PER_BLOB and also BYTE_PER_BLOB
     let sidecar: SidecarBuilder<SimpleCoder> = SidecarBuilder::from_slice(&large_data);
 
-    let sidecar = sidecar.build().unwrap();
+    let sidecar: BlobTransactionSidecar = sidecar.build().unwrap();
 
     let tx = TransactionRequest::default()
         .with_from(from)
@@ -199,7 +199,7 @@ async fn can_mine_blobs_when_exceeds_max_blobs() {
 
     let num_blobs_first = sidecar.clone().take().len() as u64;
 
-    let sidecar = sidecar.build().unwrap();
+    let sidecar: BlobTransactionSidecar = sidecar.build().unwrap();
 
     let tx = TransactionRequest::default()
         .with_from(from)
@@ -221,7 +221,7 @@ async fn can_mine_blobs_when_exceeds_max_blobs() {
 
     let num_blobs_second = sidecar.clone().take().len() as u64;
 
-    let sidecar = sidecar.build().unwrap();
+    let sidecar: BlobTransactionSidecar = sidecar.build().unwrap();
     tx.set_blob_sidecar_4844(sidecar);
     tx.set_nonce(1);
     tx.populate_blob_hashes();
@@ -277,7 +277,7 @@ async fn can_correctly_estimate_blob_gas_with_recommended_fillers() {
     let bob = accounts[1];
 
     let sidecar: SidecarBuilder<SimpleCoder> = SidecarBuilder::from_slice(b"Blobs are fun!");
-    let sidecar = sidecar.build().unwrap();
+    let sidecar: BlobTransactionSidecar = sidecar.build().unwrap();
 
     let tx = TransactionRequest::default().with_to(bob).with_blob_sidecar_4844(sidecar);
     let tx = WithOtherFields::new(tx);
@@ -323,7 +323,7 @@ async fn can_correctly_estimate_blob_gas_with_recommended_fillers_with_signer() 
     let bob = accounts[1];
 
     let sidecar: SidecarBuilder<SimpleCoder> = SidecarBuilder::from_slice(b"Blobs are fun!");
-    let sidecar = sidecar.build().unwrap();
+    let sidecar: BlobTransactionSidecar = sidecar.build().unwrap();
 
     let tx = TransactionRequest::default().with_to(bob).with_blob_sidecar_4844(sidecar);
     let tx = WithOtherFields::new(tx);

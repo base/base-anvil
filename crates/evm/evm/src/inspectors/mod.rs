@@ -19,6 +19,9 @@ pub use logs::LogCollector;
 mod script;
 pub use script::ScriptExecutionInspector;
 
+mod edge_cov;
+pub use edge_cov::EdgeCovInspector;
+
 mod stack;
 pub use stack::{InspectorData, InspectorStack, InspectorStackBuilder};
 

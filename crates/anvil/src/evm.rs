@@ -30,19 +30,21 @@ mod tests {
         eth::EthEvmContext,
         precompiles::{DynPrecompile, PrecompilesMap},
     };
-    use alloy_op_evm::{OpEvm, OpEvmContext, OpTx};
+    use alloy_op_evm::{OpEvm, OpTx};
     use alloy_primitives::{Address, Bytes, TxKind, U256, address};
     use foundry_evm::core::either_evm::EitherEvm;
     use foundry_evm_networks::NetworkConfigs;
     use itertools::Itertools;
-    use op_revm::{L1BlockInfo, OpSpecId, OpTransaction, precompiles::OpPrecompiles};
+    use op_revm::{
+        DefaultOp, L1BlockInfo, OpBuilder, OpContext, OpSpecId, OpTransaction,
+        precompiles::OpPrecompiles,
+    };
     use revm::{
-        Journal,
-        context::{CfgEnv, Evm as RevmEvm, JournalTr, LocalContext, TxEnv},
+        MainBuilder, MainContext,
+        context::{CfgEnv, TxEnv},
         database::{EmptyDB, EmptyDBTyped},
-        handler::{EthPrecompiles, instructions::EthInstructions},
+        handler::EthPrecompiles,
         inspector::NoOpInspector,
-        interpreter::interpreter::EthInterpreter,
         precompile::{PrecompileOutput, PrecompileSpecId, Precompiles},
         primitives::hardfork::SpecId,
     };
@@ -69,11 +71,7 @@ mod tests {
             vec![(
                 PRECOMPILE_ADDR,
                 DynPrecompile::from(|input: PrecompileInput<'_>| {
-                    Ok(PrecompileOutput::new(
-                        0,
-                        Bytes::copy_from_slice(input.data),
-                        input.reservoir,
-                    ))
+                    Ok(PrecompileOutput::new(0, Bytes::copy_from_slice(input.data), 0))
                 }),
             )]
         }
@@ -93,30 +91,19 @@ mod tests {
             },
         };
 
-        let eth_evm_context = EthEvmContext {
-            journaled_state: Journal::new(EmptyDB::default()),
-            block: eth_env.evm_env.block_env.clone(),
-            cfg: eth_env.evm_env.cfg_env.clone(),
-            tx: eth_env.tx.clone(),
-            chain: (),
-            local: LocalContext::default(),
-            error: Ok(()),
-        };
-
         let eth_precompiles = EthPrecompiles {
             precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec)),
             spec,
         }
         .precompiles;
         let eth_evm = EitherEvm::Eth(EthEvm::new(
-            RevmEvm::new_with_inspector(
-                eth_evm_context,
-                NoOpInspector,
-                EthInstructions::<EthInterpreter, EthEvmContext<EmptyDB>>::new_mainnet_with_spec(
-                    spec,
-                ),
-                PrecompilesMap::from_static(eth_precompiles),
-            ),
+            EthEvmContext::<EmptyDB>::mainnet()
+                .with_block(eth_env.evm_env.block_env.clone())
+                .with_cfg(eth_env.evm_env.cfg_env.clone())
+                .with_tx(eth_env.tx.clone())
+                .with_db(EmptyDB::default())
+                .build_mainnet_with_inspector(NoOpInspector {})
+                .with_precompiles(PrecompilesMap::from_static(eth_precompiles)),
             true,
         ));
 
@@ -152,31 +139,16 @@ mod tests {
         }
 
         let op_cfg: CfgEnv<OpSpecId> = CfgEnv::new_with_spec(op_spec);
-        let op_evm_context = OpEvmContext {
-            journaled_state: {
-                let mut journal = Journal::new(EmptyDB::default());
-                // Converting SpecId into OpSpecId
-                journal.set_spec_id(op_env.evm_env.cfg_env.spec);
-                journal
-            },
-            block: op_env.evm_env.block_env.clone(),
-            cfg: op_cfg.clone(),
-            tx: OpTx(op_env.tx.clone()),
-            chain,
-            local: LocalContext::default(),
-            error: Ok(()),
-        };
-
         let op_precompiles = OpPrecompiles::new_with_spec(op_cfg.spec).precompiles();
         let op_evm = EitherEvm::Op(OpEvm::new(
-            op_revm::OpEvm(RevmEvm::new_with_inspector(
-                op_evm_context,
-                NoOpInspector,
-                EthInstructions::<EthInterpreter, OpEvmContext<EmptyDB>>::new_mainnet_with_spec(
-                    spec,
-                ),
-                PrecompilesMap::from_static(op_precompiles),
-            )),
+            OpContext::<EmptyDB>::op()
+                .with_tx(OpTx(op_env.tx.clone()))
+                .with_cfg(op_cfg.clone())
+                .with_chain(chain)
+                .with_db(EmptyDB::default())
+                .with_block(op_env.evm_env.block_env.clone())
+                .build_op_with_inspector(NoOpInspector {})
+                .with_precompiles(PrecompilesMap::from_static(op_precompiles)),
             true,
         ));
 

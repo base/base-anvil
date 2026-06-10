@@ -32,7 +32,7 @@ resolver = "2"
 [workspace.package]
 version = "1.6.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.94.1"
 authors = ["Foundry Contributors"]
 license = "MIT OR Apache-2.0"
 homepage = "https://getfoundry.sh"
@@ -278,7 +278,7 @@ foundry-compilers = { version = "0.21.0", default-features = false, features = [
     "rustls",
     "svm-solc",
 ] }
-foundry-fork-db = { version = "0.26.0", features = ["zstd"] }
+foundry-fork-db = { git = "https://github.com/foundry-rs/foundry-core", rev = "8027e5ccdfe55e562a1111495d2c9acb6e27a930", features = ["zstd"] }
 solang-parser = { version = "=0.3.9", package = "foundry-solang-parser" }
 solar = { package = "solar-compiler", version = "=0.1.8", default-features = false }
 svm = { package = "svm-rs", version = "0.5", default-features = false, features = [
@@ -340,13 +340,13 @@ op-alloy-rpc-types = "0.24.0"
 op-alloy-flz = "0.13.1"
 
 ## alloy-evm
-alloy-evm = "0.34.0"
-alloy-op-evm = "0.31.0"
+alloy-evm = "0.36.0"
+alloy-op-evm = "0.32.0"
 
 # revm
-revm = { version = "38.0.0", default-features = false }
-revm-inspectors = { version = "0.39.0", features = ["serde"] }
-op-revm = { version = "19.0.0", default-features = false }
+revm = { version = "40.0.3", default-features = false }
+revm-inspectors = { version = "0.40.1", features = ["serde"] }
+op-revm = { version = "20.0.0", default-features = false }
 
 ## cli
 anstream = "0.6"
@@ -511,18 +511,18 @@ rexpect = { git = "https://github.com/rust-cli/rexpect", rev = "2ed0b1898d7edaf6
 # op-revm = { git = "https://github.com/bluealloy/revm.git", rev = "7e59936" }
 # revm-inspectors = { git = "https://github.com/paradigmxyz/revm-inspectors.git", branch = "staging-revm" }
 
-## op-revm / op-alloy / alloy-op-evm
-op-revm = { git = "https://github.com/ethereum-optimism/optimism", rev = "e3b59e76588f99db17205f5601e45a5b00f0bfbb" }
-op-alloy-consensus = { git = "https://github.com/ethereum-optimism/optimism", rev = "e3b59e76588f99db17205f5601e45a5b00f0bfbb" }
-op-alloy-network = { git = "https://github.com/ethereum-optimism/optimism", rev = "e3b59e76588f99db17205f5601e45a5b00f0bfbb" }
-op-alloy-rpc-types = { git = "https://github.com/ethereum-optimism/optimism", rev = "e3b59e76588f99db17205f5601e45a5b00f0bfbb" }
-alloy-op-evm = { git = "https://github.com/ethereum-optimism/optimism", rev = "e3b59e76588f99db17205f5601e45a5b00f0bfbb" }
-alloy-op-hardforks = { git = "https://github.com/ethereum-optimism/optimism", rev = "e3b59e76588f99db17205f5601e45a5b00f0bfbb" }
+## Pinned to Foundry forks until upstream optimism bumps to revm 40.
+op-revm = { git = "https://github.com/foundry-rs/op-revm", rev = "4201f16a746f2da2df38f1eac477500d492eaed5" }
+alloy-op-evm = { git = "https://github.com/foundry-rs/optimism", branch = "bump-alloy-evm-0-36-tempo" }
+op-alloy-consensus = { git = "https://github.com/foundry-rs/optimism", branch = "bump-alloy-evm-0-36-tempo" }
+op-alloy-network = { git = "https://github.com/foundry-rs/optimism", branch = "bump-alloy-evm-0-36-tempo" }
+op-alloy-rpc-types = { git = "https://github.com/foundry-rs/optimism", branch = "bump-alloy-evm-0-36-tempo" }
+alloy-op-hardforks = { git = "https://github.com/foundry-rs/optimism", branch = "bump-alloy-evm-0-36-tempo" }
 
 ## foundry
 # foundry-block-explorers = { git = "https://github.com/foundry-rs/block-explorers.git", rev = "f5b46b2" }
 # foundry-compilers = { git = "https://github.com/foundry-rs/compilers.git", branch = "main" }
-# foundry-fork-db = { git = "https://github.com/foundry-rs/foundry-fork-db", rev = "b4299fc" }
+# foundry-fork-db = { git = "https://github.com/foundry-rs/foundry-core", rev = "8027e5ccdfe55e562a1111495d2c9acb6e27a930" }
 
 # solar
 solar = { package = "solar-compiler", git = "https://github.com/paradigmxyz/solar", rev = "530f129" }

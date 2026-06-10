@@ -734,6 +734,7 @@ impl Cheatcodes {
                             gas,
                         },
                         memory_offset: call.return_memory_offset.clone(),
+                        charged_new_account_state_gas: false,
                         was_precompile_called: false,
                         precompile_call_logs: vec![],
                     });
@@ -754,6 +755,7 @@ impl Cheatcodes {
                         gas,
                     },
                     memory_offset: call.return_memory_offset.clone(),
+                    charged_new_account_state_gas: false,
                     was_precompile_called: true,
                     precompile_call_logs: vec![],
                 }),
@@ -764,6 +766,7 @@ impl Cheatcodes {
                         gas,
                     },
                     memory_offset: call.return_memory_offset.clone(),
+                    charged_new_account_state_gas: false,
                     was_precompile_called: false,
                     precompile_call_logs: vec![],
                 }),
@@ -829,6 +832,7 @@ impl Cheatcodes {
                         gas,
                     },
                     memory_offset: call.return_memory_offset.clone(),
+                    charged_new_account_state_gas: false,
                     was_precompile_called: true,
                     precompile_call_logs: vec![],
                 });
@@ -908,6 +912,7 @@ impl Cheatcodes {
                                 gas,
                             },
                             memory_offset: call.return_memory_offset.clone(),
+                            charged_new_account_state_gas: false,
                             was_precompile_called: false,
                             precompile_call_logs: vec![],
                         });
@@ -942,6 +947,7 @@ impl Cheatcodes {
                                     gas,
                                 },
                                 memory_offset: call.return_memory_offset.clone(),
+                                charged_new_account_state_gas: false,
                                 was_precompile_called: false,
                                 precompile_call_logs: vec![],
                             });
@@ -985,6 +991,7 @@ impl Cheatcodes {
                             gas,
                         },
                         memory_offset: call.return_memory_offset.clone(),
+                        charged_new_account_state_gas: false,
                         was_precompile_called: false,
                         precompile_call_logs: vec![],
                     });

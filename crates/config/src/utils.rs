@@ -289,7 +289,7 @@ pub fn evm_spec_id(evm_version: EvmVersion) -> SpecId {
         EvmVersion::TangerineWhistle => SpecId::TANGERINE,
         EvmVersion::SpuriousDragon => SpecId::SPURIOUS_DRAGON,
         EvmVersion::Byzantium => SpecId::BYZANTIUM,
-        EvmVersion::Constantinople => SpecId::CONSTANTINOPLE,
+        EvmVersion::Constantinople => SpecId::PETERSBURG,
         EvmVersion::Petersburg => SpecId::PETERSBURG,
         EvmVersion::Istanbul => SpecId::ISTANBUL,
         EvmVersion::Berlin => SpecId::BERLIN,
