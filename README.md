@@ -14,6 +14,7 @@
 [tg-support-url]: https://t.me/foundry_support
 
 **[Install](https://getfoundry.sh/getting-started/installation)**
+| [Testing against Base](./docs/base.md)
 | [Docs][foundry-docs]
 | [Developer Guidelines](./docs/dev/README.md)
 | [Contributing](./CONTRIBUTING.md)
