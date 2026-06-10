@@ -122,11 +122,6 @@ jobs:
             svm_target_platform: linux-aarch64
             platform: linux
             arch: arm64
-          - runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
-            svm_target_platform: linux-aarch64
-            platform: alpine
-            arch: arm64
           - runner: macos-latest
             target: x86_64-apple-darwin
             svm_target_platform: macosx-amd64
