@@ -148,10 +148,40 @@ pub fn next_ws_archive_rpc_url() -> String {
 
 /// Returns a URL that has access to archive state.
 fn next_archive_url(is_ws: bool) -> String {
+    if let Some(url) = next_archive_url_from_env(is_ws) {
+        test_debug!("next_archive_url(is_ws={is_ws}) = {}", debug_url(&url));
+        return url;
+    }
+
     let domain = if is_ws { &WS_ARCHIVE_DOMAINS } else { &HTTP_ARCHIVE_DOMAINS }.next();
     let url = if is_ws { format!("wss://{domain}") } else { format!("https://{domain}") };
     test_debug!("next_archive_url(is_ws={is_ws}) = {}", debug_url(&url));
     url
+}
+
+fn next_archive_url_from_env(is_ws: bool) -> Option<String> {
+    let var = if is_ws { "WS_ARCHIVE_URLS" } else { "HTTP_ARCHIVE_URLS" };
+    let urls = env::var(var).ok()?;
+    let mut urls = parse_rpc_urls(&urls, is_ws);
+    urls.shuffle(&mut rand::rng());
+    urls.into_iter().next()
+}
+
+fn parse_rpc_urls(urls: &str, is_ws: bool) -> Vec<String> {
+    urls.split(|c: char| c == ',' || c.is_ascii_whitespace())
+        .filter(|url| !url.is_empty())
+        .map(|url| normalize_rpc_url(url, is_ws))
+        .collect()
+}
+
+fn normalize_rpc_url(url: &str, is_ws: bool) -> String {
+    if url.contains("://") {
+        url.to_string()
+    } else if is_ws {
+        format!("wss://{url}")
+    } else {
+        format!("https://{url}")
+    }
 }
 
 /// Returns the next etherscan api key.
@@ -237,6 +267,21 @@ mod tests {
     use super::*;
     use alloy_primitives::address;
     use foundry_config::Chain;
+
+    #[test]
+    fn parses_archive_urls_from_env_formats() {
+        assert_eq!(
+            parse_rpc_urls(
+                "rpc.example.com, https://rpc2.example.com\nws://ignored.example.com",
+                false,
+            ),
+            vec!["https://rpc.example.com", "https://rpc2.example.com", "ws://ignored.example.com",],
+        );
+        assert_eq!(
+            parse_rpc_urls("ws.example.com wss://ws2.example.com", true),
+            vec!["wss://ws.example.com", "wss://ws2.example.com"]
+        );
+    }
 
     #[tokio::test]
     #[ignore = "run manually"]
