@@ -459,6 +459,7 @@ async fn can_get_node_info() {
             fork_block_number: None,
             fork_retry_backoff: None,
         },
+        network: None,
     };
 
     assert_eq!(node_info, expected_node_info);
@@ -481,6 +482,8 @@ async fn can_get_metadata() {
         latest_block_number: block_number,
         chain_id,
         client_version: CLIENT_VERSION.to_string(),
+        client_semver: None,
+        client_commit_sha: None,
         instance_id: api.instance_id(),
         forked_network: None,
         snapshots: Default::default(),
@@ -506,6 +509,8 @@ async fn can_get_metadata_on_fork() {
         latest_block_number: block_number,
         chain_id,
         client_version: CLIENT_VERSION.to_string(),
+        client_semver: None,
+        client_commit_sha: None,
         instance_id: api.instance_id(),
         forked_network: Some(ForkedNetwork {
             chain_id,

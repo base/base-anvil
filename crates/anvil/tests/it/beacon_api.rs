@@ -63,7 +63,7 @@ async fn test_beacon_api_get_blobs() {
             .with_max_fee_per_blob_gas(gas_price + 1)
             .with_max_fee_per_gas(eip1559_est.max_fee_per_gas)
             .with_max_priority_fee_per_gas(eip1559_est.max_priority_fee_per_gas)
-            .with_blob_sidecar(sidecar)
+            .with_blob_sidecar_4844(sidecar)
             .value(U256::from(100));
 
         let mut tx = WithOtherFields::new(tx);
