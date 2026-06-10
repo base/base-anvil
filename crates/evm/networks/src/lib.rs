@@ -262,7 +262,8 @@ impl NetworkConfigs {
         ]
         .into_iter()
         .map(|feature| {
-            // Solidity mapping slot: keccak256(lpad32(key) ‖ base_slot); key and root are 32-byte words.
+            // Solidity mapping slot: keccak256(lpad32(key) ‖ base_slot); key and root are 32-byte
+            // words.
             let mut buf = [0u8; 64];
             buf[..32].copy_from_slice(feature.id().as_slice());
             buf[32..].copy_from_slice(&root);

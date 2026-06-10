@@ -11,8 +11,8 @@ use crate::{
     env::ContextExt,
 };
 use alloy_consensus::constants::KECCAK_EMPTY;
-use alloy_genesis::GenesisAccount;
 use alloy_evm::{Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
+use alloy_genesis::GenesisAccount;
 use alloy_primitives::{Address, B256, Bytes, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
