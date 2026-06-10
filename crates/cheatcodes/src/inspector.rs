@@ -2577,7 +2577,7 @@ fn calls_as_dyn_cheatcode(calls: &Vm::VmCalls) -> &dyn DynCheatcode {
 fn will_exit(action: &InterpreterAction) -> bool {
     match action {
         InterpreterAction::Return(result) => {
-            result.result.is_ok_or_revert() || result.result.is_error()
+            result.result.is_ok_or_revert() || result.result.is_halt()
         }
         _ => false,
     }

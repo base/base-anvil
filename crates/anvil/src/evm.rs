@@ -143,7 +143,7 @@ mod tests {
         let op_evm = EitherEvm::Op(OpEvm::new(
             OpContext::<EmptyDB>::op()
                 .with_tx(OpTx(op_env.tx.clone()))
-                .with_cfg(op_cfg.clone())
+                .with_cfg(op_cfg)
                 .with_chain(chain)
                 .with_db(EmptyDB::default())
                 .with_block(op_env.evm_env.block_env.clone())

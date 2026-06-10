@@ -147,8 +147,8 @@ impl NetworkConfigs {
     }
 
     /// Returns the activation admin address that will be configured on the
-    /// ActivationRegistry precompile when `--base` is set. Falls back to
-    /// `DEFAULT_BASE_ACTIVATION_ADMIN` when no override is provided.
+    /// ActivationRegistry precompile when `--base` is set. Falls back to the
+    /// default Base activation admin when no override is provided.
     pub fn base_activation_admin(&self) -> Address {
         self.base_activation_admin.unwrap_or(DEFAULT_BASE_ACTIVATION_ADMIN)
     }
@@ -228,9 +228,9 @@ impl NetworkConfigs {
     }
 
     /// Returns the static list of Base singleton precompile addresses that the
-    /// executor pre-warms with sentinel bytecode. See the docstring on
-    /// `BASE_PRECOMPILE_SENTINEL_ADDRESSES` for the scope and why B-20 tokens
-    /// are intentionally excluded.
+    /// executor pre-warms with sentinel bytecode. B-20 token addresses are
+    /// intentionally excluded because they are handled by the shared prefix
+    /// dispatcher instead of individual singleton sentinels.
     pub fn base_precompile_sentinel_addresses(&self) -> &'static [Address] {
         if self.base { BASE_PRECOMPILE_SENTINEL_ADDRESSES } else { &[] }
     }

@@ -7,7 +7,9 @@ yanked = "warn"
 ignore = [
     # https://rustsec.org/advisories/RUSTSEC-2024-0436 paste! is unmaintained
     "RUSTSEC-2024-0436",
-    # https://rustsec.org/advisories/RUSTSEC-2026-0173 proc-macro-error2 is unmaintained
+    # https://rustsec.org/advisories/RUSTSEC-2025-0141 bincode is unmaintained
+    "RUSTSEC-2025-0141",
+    # proc-macro-error2 is currently still pulled in through alloy's proc-macro stack.
     "RUSTSEC-2026-0173",
 ]
 
@@ -99,7 +101,9 @@ unknown-git = "deny"
 allow-git = [
     "https://github.com/alloy-rs/alloy",
     "https://github.com/foundry-rs/compilers",
-    "https://github.com/foundry-rs/foundry-fork-db",
+    "https://github.com/foundry-rs/foundry-core",
+    "https://github.com/foundry-rs/op-revm",
+    "https://github.com/foundry-rs/optimism",
     "https://github.com/paradigmxyz/revm-inspectors",
     "https://github.com/paradigmxyz/solar",
     "https://github.com/bluealloy/revm",
