@@ -12,11 +12,11 @@ use alloy_chains::{
 use alloy_eips::eip1559::BaseFeeParams;
 use alloy_evm::precompiles::{DynPrecompile, PrecompilesMap};
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
-use alloy_primitives::{Address, address, map::AddressHashMap};
+use alloy_primitives::{Address, U256, address, keccak256, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationRegistry, ActivationRegistryStorage, B20AssetPrecompile, B20Factory,
-    B20FactoryStorage, B20StablecoinPrecompile, B20Variant, PolicyRegistryPrecompile,
+    ActivationFeature, ActivationRegistry, ActivationRegistryStorage, B20AssetPrecompile,
+    B20Factory, B20FactoryStorage, B20StablecoinPrecompile, B20Variant, PolicyRegistryPrecompile,
     PolicyRegistryStorage,
 };
 use clap::Parser;
@@ -233,5 +233,42 @@ impl NetworkConfigs {
     /// are intentionally excluded.
     pub fn base_precompile_sentinel_addresses(&self) -> &'static [Address] {
         if self.base { BASE_PRECOMPILE_SENTINEL_ADDRESSES } else { &[] }
+    }
+
+    /// `(address, slot, value)` writes that mark Base's activation-gated
+    /// features active, so local `forge test --base` (no fork) matches a live
+    /// Beryl+ chain instead of reverting `FeatureNotActivated`. Empty unless
+    /// `--base` is set.
+    ///
+    /// Slot derivation MUST stay in lockstep with the `features` mapping in
+    /// base/base `precompiles/src/activation/storage.rs`. That mapping lives at
+    /// the ERC-7201 root of namespace `"base.activation_registry"` (base/base's
+    /// `activation_registry_namespace_matches_base_std_root` test pins this root
+    /// to `0x43ee..cce00`), and each feature flag sits at the Solidity mapping
+    /// slot `keccak256(feature_id ‖ root)`.
+    pub fn base_activation_seeds(&self) -> Vec<(Address, U256, U256)> {
+        if !self.base {
+            return Vec::new();
+        }
+        // ERC-7201 root: keccak256(abi.encode(uint256(keccak256(id)) - 1)) & ~0xff.
+        let id_hash = U256::from_be_bytes(keccak256("base.activation_registry").0);
+        let root = (U256::from_be_bytes(keccak256((id_hash - U256::ONE).to_be_bytes::<32>()).0)
+            & !U256::from(0xffu64))
+        .to_be_bytes::<32>();
+        [
+            ActivationFeature::B20Asset,
+            ActivationFeature::B20Stablecoin,
+            ActivationFeature::PolicyRegistry,
+        ]
+        .into_iter()
+        .map(|feature| {
+            // Solidity mapping slot: keccak256(lpad32(key) ‖ base_slot); key and root are 32-byte words.
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(feature.id().as_slice());
+            buf[32..].copy_from_slice(&root);
+            let slot = U256::from_be_bytes(keccak256(buf).0);
+            (ActivationRegistryStorage::ADDRESS, slot, U256::ONE)
+        })
+        .collect()
     }
 }
