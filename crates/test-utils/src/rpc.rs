@@ -40,36 +40,10 @@ impl<T> ShuffledList<T> {
     }
 }
 
-shuffled_list!(
-    HTTP_ARCHIVE_DOMAINS,
-    vec![
-        //
-        "reth-ethereum.ithaca.xyz/rpc",
-    ],
-);
-shuffled_list!(
-    HTTP_DOMAINS,
-    vec![
-        //
-        "reth-ethereum.ithaca.xyz/rpc",
-        // "reth-ethereum-full.ithaca.xyz/rpc",
-    ],
-);
-shuffled_list!(
-    WS_ARCHIVE_DOMAINS,
-    vec![
-        //
-        "reth-ethereum.ithaca.xyz/ws",
-    ],
-);
-shuffled_list!(
-    WS_DOMAINS,
-    vec![
-        //
-        "reth-ethereum.ithaca.xyz/ws",
-        // "reth-ethereum-full.ithaca.xyz/ws",
-    ],
-);
+shuffled_list!(HTTP_ARCHIVE_DOMAINS, vec!["ethereum-rpc.publicnode.com",],);
+shuffled_list!(HTTP_DOMAINS, vec!["ethereum-rpc.publicnode.com",],);
+shuffled_list!(WS_ARCHIVE_DOMAINS, vec!["ethereum-rpc.publicnode.com",],);
+shuffled_list!(WS_DOMAINS, vec!["ethereum-rpc.publicnode.com",],);
 
 // List of general purpose DRPC keys to rotate through
 shuffled_list!(
