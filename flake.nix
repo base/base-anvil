@@ -18,7 +18,7 @@
           };
 
           lib = pkgs.lib;
-          toolchain = fenix.packages.${system}.stable.toolchain;
+          toolchain = fenix.packages.${system}.fromToolchainFile { dir = ./.; };
         in
         {
           default = pkgs.mkShell {

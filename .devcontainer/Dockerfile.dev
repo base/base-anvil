@@ -6,6 +6,7 @@ ARG USER_GID=$USER_UID
 ARG PYTHON_VERSION=3.14
 ARG NODE_MAJOR=20
 ARG VYPER_VERSION=0.4.3
+ARG RUST_VERSION=1.94.1
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CARGO_TERM_COLOR=always \
@@ -71,6 +72,8 @@ ENV CARGO_HOME="/home/$USERNAME/.cargo"
 ENV RUSTUP_HOME="/home/$USERNAME/.rustup"
 ENV PATH="$CARGO_HOME/bin:$PATH"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && rustup toolchain install ${RUST_VERSION} \
+    && rustup default ${RUST_VERSION} \
     && cargo install cargo-nextest --locked
 
 # Install Vyper using pip
@@ -81,4 +84,3 @@ RUN pip3 install --user vyper==${VYPER_VERSION}
 
 # Switch back to the main workspace directory
 WORKDIR /workspace
-

@@ -28,8 +28,8 @@ use revm::{
     database::{CacheDB, DatabaseRef},
     inspector::NoOpInspector,
     precompile::{PrecompileSpecId, Precompiles},
-    primitives::{AddressMap, KECCAK_EMPTY, Log, U256Map, hardfork::SpecId},
-    state::{Account, AccountInfo, EvmState, EvmStorageSlot},
+    primitives::{AddressMap, AddressSet, KECCAK_EMPTY, Log, U256Map, hardfork::SpecId},
+    state::{Account, AccountInfo, EvmState, EvmStorageSlot, TransactionId},
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -1448,7 +1448,7 @@ impl DatabaseExt for Backend {
                         EvmStorageSlot::new_changed(
                             acc.storage.get(&slot).map(|s| s.present_value).unwrap_or_default(),
                             U256::from_be_bytes(value.0),
-                            0,
+                            TransactionId::ZERO,
                         ),
                     );
                 }
@@ -1828,9 +1828,8 @@ impl BackendInner {
             journal_inner.set_spec_id(self.spec_id);
             journal_inner
         };
-        journal
-            .warm_addresses
-            .set_precompile_addresses(self.precompiles().addresses().copied().collect());
+        let precompile_addresses: AddressSet = self.precompiles().addresses().copied().collect();
+        journal.warm_addresses.set_precompile_addresses(&precompile_addresses);
         journal
     }
 }

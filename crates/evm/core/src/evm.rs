@@ -149,6 +149,7 @@ fn get_create2_factory_call_inputs(
         gas_limit: inputs.gas_limit(),
         reservoir: 0,
         is_static: false,
+        charged_new_account_state_gas: false,
         return_memory_offset: 0..0,
     }
 }
@@ -174,6 +175,7 @@ impl<'db, I: InspectorExt> FoundryEvm<'db, I> {
         frame: FrameInput,
     ) -> Result<FrameResult, EVMError<DatabaseError>> {
         let mut handler = FoundryHandler::<I>::default();
+        let original_reservoir = frame.reservoir();
 
         // Create first frame
         let memory =
@@ -184,7 +186,7 @@ impl<'db, I: InspectorExt> FoundryEvm<'db, I> {
         let mut frame_result = handler.inspect_run_exec_loop(&mut self.inner, first_frame_input)?;
 
         // Handle last frame result
-        handler.last_frame_result(&mut self.inner, &mut frame_result)?;
+        handler.last_frame_result(&mut self.inner, original_reservoir, &mut frame_result)?;
 
         Ok(frame_result)
     }
@@ -358,6 +360,7 @@ impl<'db, I: InspectorExt> FoundryHandler<'db, I> {
                         memory_offset: 0..0,
                         was_precompile_called: false,
                         precompile_call_logs: vec![],
+                        charged_new_account_state_gas: false,
                     })));
                 } else if code_hash != DEFAULT_CREATE2_DEPLOYER_CODEHASH {
                     return Ok(Some(FrameResult::Call(CallOutcome {
@@ -369,6 +372,7 @@ impl<'db, I: InspectorExt> FoundryHandler<'db, I> {
                         memory_offset: 0..0,
                         was_precompile_called: false,
                         precompile_call_logs: vec![],
+                        charged_new_account_state_gas: false,
                     })));
                 }
 

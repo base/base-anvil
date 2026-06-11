@@ -1,5 +1,5 @@
 use crate::utils::http_provider;
-use alloy_consensus::{Blob, SidecarBuilder, SimpleCoder, Transaction};
+use alloy_consensus::{Blob, BlobTransactionSidecar, SidecarBuilder, SimpleCoder, Transaction};
 use alloy_network::{TransactionBuilder, TransactionBuilder4844};
 use alloy_primitives::{B256, FixedBytes, U256, b256};
 use alloy_provider::Provider;
@@ -54,7 +54,7 @@ async fn test_beacon_api_get_blobs() {
     // Send all transactions without waiting for receipts
     for (i, data) in blob_data.iter().enumerate() {
         let sidecar: SidecarBuilder<SimpleCoder> = SidecarBuilder::from_slice(data.as_slice());
-        let sidecar = sidecar.build().unwrap();
+        let sidecar: BlobTransactionSidecar = sidecar.build().unwrap();
 
         let tx = TransactionRequest::default()
             .with_from(from)
