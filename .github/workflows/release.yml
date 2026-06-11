@@ -35,18 +35,37 @@ jobs:
       tag_name: ${{ steps.release_info.outputs.tag_name }}
       release_name: ${{ steps.release_info.outputs.release_name }}
       changelog: ${{ steps.build_changelog.outputs.changelog }}
+      base_sha: ${{ steps.base_info.outputs.base_sha }}
+      base_sha_short: ${{ steps.base_info.outputs.base_sha_short }}
+      release_body: ${{ steps.compose_body.outputs.release_body }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: 0
 
+      # The base/base commit these binaries' precompiles are pinned to: the
+      # chain version this build reproduces. Labels the release and the tag.
+      - name: Resolve pinned base/base commit
+        id: base_info
+        run: |
+          set -euo pipefail
+          base_sha="$(awk -F'"' '/^base-common-precompiles = \{ git/ {print $4}' crates/evm/networks/Cargo.toml)"
+          if [[ ! "$base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not parse pinned base/base rev from crates/evm/networks/Cargo.toml (got '${base_sha}')"
+            exit 1
+          fi
+          printf 'base_sha=%s\n' "$base_sha" >> "$GITHUB_OUTPUT"
+          printf 'base_sha_short=%s\n' "${base_sha:0:12}" >> "$GITHUB_OUTPUT"
+
       - name: Compute release name and tag
         id: release_info
+        env:
+          BASE_SHA_SHORT: ${{ steps.base_info.outputs.base_sha_short }}
         run: |
           if [[ ${IS_NIGHTLY} == 'true' ]]; then
             printf 'tag_name=%s\n' "nightly-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-            printf 'release_name=%s\n' "Nightly ($(date '+%Y-%m-%d'))" >> "$GITHUB_OUTPUT"
+            printf 'release_name=%s\n' "Nightly ($(date '+%Y-%m-%d'), base ${BASE_SHA_SHORT})" >> "$GITHUB_OUTPUT"
           else
             printf 'tag_name=%s\n' "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
             printf 'release_name=%s\n' "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
@@ -66,6 +85,18 @@ jobs:
             const createTag = require('./.github/scripts/create-tag.js')
             await createTag({ github, context }, process.env.TAG_NAME)
 
+      # Moving label tag base/base's interface job can pin instead of a bare
+      # SHA: always the newest base-anvil built against this base/base commit.
+      - name: Create base-labeled tag
+        if: ${{ env.IS_NIGHTLY == 'true' }}
+        uses: actions/github-script@v8
+        env:
+          TAG_NAME: nightly-base-${{ steps.base_info.outputs.base_sha_short }}
+        with:
+          script: |
+            const createTag = require('./.github/scripts/create-tag.js')
+            await createTag({ github, context }, process.env.TAG_NAME)
+
       - name: Build changelog
         id: build_changelog
         uses: mikepenz/release-changelog-builder-action@439f79b5b5428107c7688c1d2b0e8bacc9b8792c # v6
@@ -75,6 +106,19 @@ jobs:
           toTag: ${{ steps.release_info.outputs.tag_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compose release body
+        id: compose_body
+        env:
+          BASE_SHA: ${{ steps.base_info.outputs.base_sha }}
+          CHANGELOG: ${{ steps.build_changelog.outputs.changelog }}
+        run: |
+          {
+            printf 'release_body<<RELEASE_BODY_EOF\n'
+            printf 'Built against base/base [`%s`](https://github.com/base/base/commit/%s).\n\n' "$BASE_SHA" "$BASE_SHA"
+            printf '%s\n' "$CHANGELOG"
+            printf 'RELEASE_BODY_EOF\n'
+          } >> "$GITHUB_OUTPUT"
 
   release-docker:
     name: Release Docker
@@ -288,7 +332,7 @@ jobs:
           name: ${{ needs.prepare.outputs.release_name }}
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           prerelease: ${{ env.IS_NIGHTLY == 'true' }}
-          body: ${{ needs.prepare.outputs.changelog }}
+          body: ${{ needs.prepare.outputs.release_body }}
           files: |
             ${{ steps.artifacts.outputs.file_name }}
             ${{ steps.artifacts.outputs.foundry_attestation }}
@@ -303,7 +347,7 @@ jobs:
           name: "Nightly"
           tag_name: "nightly"
           prerelease: true
-          body: ${{ needs.prepare.outputs.changelog }}
+          body: ${{ needs.prepare.outputs.release_body }}
           files: |
             ${{ steps.artifacts.outputs.file_name }}
             ${{ steps.artifacts.outputs.foundry_attestation }}
