@@ -115,17 +115,14 @@ jobs:
             svm_target_platform: linux-amd64
             platform: alpine
             arch: amd64
-          - runner: ubuntu-22.04-arm
+          # arm64 Linux builds run on native arm64 runners (not x86 + QEMU):
+          # emulating the post-reth-v2 build under cross OOM-kills the runner.
+          - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             svm_target_platform: linux-aarch64
             platform: linux
             arch: arm64
-          - runner: ubuntu-22.04
-            target: aarch64-unknown-linux-musl
-            svm_target_platform: linux-aarch64
-            platform: alpine
-            arch: arm64
-          - runner: macos-13
+          - runner: macos-latest
             target: x86_64-apple-darwin
             svm_target_platform: macosx-amd64
             platform: darwin
@@ -153,8 +150,8 @@ jobs:
       - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
       - run: printf 'RUSTC_WRAPPER=sccache\n' >> "$GITHUB_ENV"
 
-      - name: Apple M1 setup
-        if: matrix.target == 'aarch64-apple-darwin'
+      - name: Apple SDK setup
+        if: contains(matrix.target, 'apple-darwin')
         run: |
           printf 'SDKROOT=%s\n' "$(xcrun -sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
           printf 'MACOSX_DEPLOYMENT_TARGET=%s\n' "$(xcrun -sdk macosx --show-sdk-platform-version)" >> "$GITHUB_ENV"
@@ -177,6 +174,15 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
+
+          # Fat LTO (profile.dist) OOM-kills the 16GB arm64 runner at link time;
+          # build arm64 without LTO + parallel codegen units, matching base/base's
+          # base-anvil-package build on the same ubuntu-24.04-arm runner.
+          if [[ "$TARGET" == "aarch64-unknown-linux-gnu" ]]; then
+            export CARGO_PROFILE_DIST_LTO=false
+            export CARGO_PROFILE_DIST_CODEGEN_UNITS=16
+          fi
+
           flags=(--target $TARGET --profile $RUST_PROFILE --bins
             --no-default-features --features "$RUST_FEATURES")
 
