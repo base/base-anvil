@@ -40,20 +40,6 @@ impl<T> ShuffledList<T> {
     }
 }
 
-shuffled_list!(HTTP_ARCHIVE_DOMAINS, vec!["ethereum-rpc.publicnode.com",],);
-shuffled_list!(HTTP_DOMAINS, vec!["ethereum-rpc.publicnode.com",],);
-shuffled_list!(WS_ARCHIVE_DOMAINS, vec!["ethereum-rpc.publicnode.com",],);
-shuffled_list!(WS_DOMAINS, vec!["ethereum-rpc.publicnode.com",],);
-
-// List of general purpose DRPC keys to rotate through
-shuffled_list!(
-    DRPC_KEYS,
-    vec![
-        "Agc9NK9-6UzYh-vQDDM80Tv0A5UnBkUR8I3qssvAG40d",
-        "AjUPUPonSEInt2CZ_7A-ai3hMyxxBlsR8I4EssvAG40d",
-    ],
-);
-
 // List of etherscan keys.
 shuffled_list!(
     ETHERSCAN_KEYS,
@@ -127,8 +113,7 @@ fn next_archive_url(is_ws: bool) -> String {
         return url;
     }
 
-    let domain = if is_ws { &WS_ARCHIVE_DOMAINS } else { &HTTP_ARCHIVE_DOMAINS }.next();
-    let url = if is_ws { format!("wss://{domain}") } else { format!("https://{domain}") };
+    let url = next_drpc_endpoint(is_ws, "ethereum");
     test_debug!("next_archive_url(is_ws={is_ws}) = {}", debug_url(&url));
     url
 }
@@ -205,23 +190,22 @@ fn next_url_inner(is_ws: bool, chain: NamedChain) -> String {
         }
     }
 
-    let reth_works = true;
-    let domain = if reth_works && matches!(chain, Mainnet) {
-        *(if is_ws { &WS_DOMAINS } else { &HTTP_DOMAINS }).next()
-    } else {
-        // DRPC for other networks used in tests.
-        let key = DRPC_KEYS.next();
-        let network = match chain {
-            Mainnet => "ethereum",
-            Polygon => "polygon",
-            Arbitrum => "arbitrum",
-            Sepolia => "sepolia",
-            _ => "",
-        };
-        &format!("lb.drpc.org/ogrpc?network={network}&dkey={key}")
+    let network = match chain {
+        Mainnet => "ethereum",
+        Polygon => "polygon",
+        Arbitrum => "arbitrum",
+        Sepolia => "sepolia",
+        _ => "",
     };
+    next_drpc_endpoint(is_ws, network)
+}
 
-    if is_ws { format!("wss://{domain}") } else { format!("https://{domain}") }
+fn next_drpc_endpoint(is_ws: bool, network: &str) -> String {
+    if is_ws {
+        return format!("wss://{network}.drpc.org");
+    }
+
+    format!("https://{network}.drpc.org")
 }
 
 /// Basic redaction for debugging RPC URLs.
