@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -7,10 +8,12 @@ use crate::{
     Env, InspectorExt,
     backend::DatabaseExt,
     constants::{DEFAULT_CREATE2_DEPLOYER_CODEHASH, DEFAULT_CREATE2_DEPLOYER_RUNTIME_CODE},
+    env::ContextExt,
 };
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_evm::{Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_genesis::GenesisAccount;
+use alloy_primitives::{Address, B256, Bytes, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
     Context, Journal,
@@ -65,6 +68,7 @@ pub fn new_evm_with_inspector<'db, I: InspectorExt>(
     };
 
     evm.inspector().get_networks().inject_precompiles(evm.precompiles_mut());
+    seed_base_activation_features(&mut evm);
     evm
 }
 
@@ -84,7 +88,33 @@ pub fn new_evm_with_existing_context<'a>(
     };
 
     evm.inspector().get_networks().inject_precompiles(evm.precompiles_mut());
+    seed_base_activation_features(&mut evm);
     evm
+}
+
+/// Seeds Base's activation-gated features as active when `--base` is set, so local
+/// execution with no `--fork-url` matches a live Beryl-or-later Base chain instead
+/// of reverting `FeatureNotActivated`. Applied via the same `load_allocs` genesis
+/// path foundry uses for pre-test state setup, so the writes land in the journal
+/// and survive into transaction execution. No-op unless `--base` is set.
+fn seed_base_activation_features<I: InspectorExt>(evm: &mut FoundryEvm<'_, I>) {
+    let seeds = evm.inspector().get_networks().base_activation_seeds();
+    let Some((target, _, _)) = seeds.first().copied() else { return };
+    let storage: BTreeMap<B256, B256> = seeds
+        .iter()
+        .map(|(_, slot, value)| {
+            (B256::from(slot.to_be_bytes::<32>()), B256::from(value.to_be_bytes::<32>()))
+        })
+        .collect();
+    let mut allocs = BTreeMap::new();
+    allocs.insert(target, GenesisAccount { storage: Some(storage), ..Default::default() });
+    let (db, journal, _) = evm.inner.ctx.as_db_env_and_journal();
+    // In fork mode the live chain already carries real activation state; seeding
+    // would clobber it, so only seed for local (non-fork) execution.
+    if (*db).is_forked_mode() {
+        return;
+    }
+    let _ = (*db).load_allocs(&allocs, journal);
 }
 
 /// Get the precompiles for the given spec.
