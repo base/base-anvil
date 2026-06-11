@@ -144,7 +144,7 @@ impl GasReport {
 impl Display for GasReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         if shell::is_json() {
-            writeln!(f, "{}", &self.format_json_output())?;
+            writeln!(f, "{}", self.format_json_output())?;
         } else {
             for (name, contract) in &self.contracts {
                 if contract.functions.is_empty() {
@@ -175,8 +175,8 @@ impl GasReport {
 
                     let functions = contract
                         .functions
-                        .iter()
-                        .flat_map(|(_, sigs)| {
+                        .values()
+                        .flat_map(|sigs| {
                             sigs.iter().map(|(sig, gas_info)| {
                                 let display_name = sig.replace(':', "");
                                 (display_name, gas_info)

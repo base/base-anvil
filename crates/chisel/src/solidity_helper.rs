@@ -175,10 +175,8 @@ impl SolidityHelper {
                     }
                 }
 
-                BlockComment { terminated, .. } => {
-                    if !terminated {
-                        return ValidationResult::Incomplete;
-                    }
+                BlockComment { terminated, .. } if !terminated => {
+                    return ValidationResult::Incomplete;
                 }
 
                 _ => {}

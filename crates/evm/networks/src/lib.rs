@@ -15,9 +15,9 @@ use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use alloy_primitives::{Address, address, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationRegistry, ActivationRegistryStorage, B20Factory, B20FactoryStorage,
-    B20AssetPrecompile, B20StablecoinPrecompile, B20Variant,
-    PolicyRegistryPrecompile, PolicyRegistryStorage,
+    ActivationRegistry, ActivationRegistryStorage, B20AssetPrecompile, B20Factory,
+    B20FactoryStorage, B20StablecoinPrecompile, B20Variant, PolicyRegistryPrecompile,
+    PolicyRegistryStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -148,7 +148,7 @@ impl NetworkConfigs {
 
     /// Returns the activation admin address that will be configured on the
     /// ActivationRegistry precompile when `--base` is set. Falls back to
-    /// [`DEFAULT_BASE_ACTIVATION_ADMIN`] when no override is provided.
+    /// `DEFAULT_BASE_ACTIVATION_ADMIN` when no override is provided.
     pub fn base_activation_admin(&self) -> Address {
         self.base_activation_admin.unwrap_or(DEFAULT_BASE_ACTIVATION_ADMIN)
     }
@@ -229,7 +229,7 @@ impl NetworkConfigs {
 
     /// Returns the static list of Base singleton precompile addresses that the
     /// executor pre-warms with sentinel bytecode. See the docstring on
-    /// [`BASE_PRECOMPILE_SENTINEL_ADDRESSES`] for the scope and why B-20 tokens
+    /// `BASE_PRECOMPILE_SENTINEL_ADDRESSES` for the scope and why B-20 tokens
     /// are intentionally excluded.
     pub fn base_precompile_sentinel_addresses(&self) -> &'static [Address] {
         if self.base { BASE_PRECOMPILE_SENTINEL_ADDRESSES } else { &[] }

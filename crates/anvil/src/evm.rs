@@ -30,12 +30,12 @@ mod tests {
         eth::EthEvmContext,
         precompiles::{DynPrecompile, PrecompilesMap},
     };
-    use alloy_op_evm::OpEvm;
+    use alloy_op_evm::{OpEvm, OpEvmContext, OpTx};
     use alloy_primitives::{Address, Bytes, TxKind, U256, address};
     use foundry_evm::core::either_evm::EitherEvm;
     use foundry_evm_networks::NetworkConfigs;
     use itertools::Itertools;
-    use op_revm::{L1BlockInfo, OpContext, OpSpecId, OpTransaction, precompiles::OpPrecompiles};
+    use op_revm::{L1BlockInfo, OpSpecId, OpTransaction, precompiles::OpPrecompiles};
     use revm::{
         Journal,
         context::{CfgEnv, Evm as RevmEvm, JournalTr, LocalContext, TxEnv},
@@ -69,12 +69,11 @@ mod tests {
             vec![(
                 PRECOMPILE_ADDR,
                 DynPrecompile::from(|input: PrecompileInput<'_>| {
-                    Ok(PrecompileOutput {
-                        bytes: Bytes::copy_from_slice(input.data),
-                        gas_used: 0,
-                        gas_refunded: 0,
-                        reverted: false,
-                    })
+                    Ok(PrecompileOutput::new(
+                        0,
+                        Bytes::copy_from_slice(input.data),
+                        input.reservoir,
+                    ))
                 }),
             )]
         }
@@ -113,7 +112,9 @@ mod tests {
             RevmEvm::new_with_inspector(
                 eth_evm_context,
                 NoOpInspector,
-                EthInstructions::<EthInterpreter, EthEvmContext<EmptyDB>>::default(),
+                EthInstructions::<EthInterpreter, EthEvmContext<EmptyDB>>::new_mainnet_with_spec(
+                    spec,
+                ),
                 PrecompilesMap::from_static(eth_precompiles),
             ),
             true,
@@ -151,7 +152,7 @@ mod tests {
         }
 
         let op_cfg: CfgEnv<OpSpecId> = CfgEnv::new_with_spec(op_spec);
-        let op_evm_context = OpContext {
+        let op_evm_context = OpEvmContext {
             journaled_state: {
                 let mut journal = Journal::new(EmptyDB::default());
                 // Converting SpecId into OpSpecId
@@ -160,7 +161,7 @@ mod tests {
             },
             block: op_env.evm_env.block_env.clone(),
             cfg: op_cfg.clone(),
-            tx: op_env.tx.clone(),
+            tx: OpTx(op_env.tx.clone()),
             chain,
             local: LocalContext::default(),
             error: Ok(()),
@@ -171,7 +172,9 @@ mod tests {
             op_revm::OpEvm(RevmEvm::new_with_inspector(
                 op_evm_context,
                 NoOpInspector,
-                EthInstructions::<EthInterpreter, OpContext<EmptyDB>>::default(),
+                EthInstructions::<EthInterpreter, OpEvmContext<EmptyDB>>::new_mainnet_with_spec(
+                    spec,
+                ),
                 PrecompilesMap::from_static(op_precompiles),
             )),
             true,
@@ -272,7 +275,7 @@ mod tests {
         assert!(evm.precompiles().addresses().contains(&PRECOMPILE_ADDR));
 
         let result = match &mut evm {
-            EitherEvm::Op(op_evm) => op_evm.transact(env.tx).unwrap(),
+            EitherEvm::Op(op_evm) => op_evm.transact(OpTx(env.tx)).unwrap(),
             _ => unreachable!(),
         };
 
@@ -297,7 +300,7 @@ mod tests {
         assert!(evm.precompiles().addresses().contains(&PRECOMPILE_ADDR));
 
         let result = match &mut evm {
-            EitherEvm::Op(op_evm) => op_evm.transact(env.tx).unwrap(),
+            EitherEvm::Op(op_evm) => op_evm.transact(OpTx(env.tx)).unwrap(),
             _ => unreachable!(),
         };
 

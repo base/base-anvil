@@ -28,7 +28,7 @@ type EitherExecResult<DBError, HaltReason, TxError> =
 ///
 /// The call delegation is handled via its own implementation of the [`Evm`] trait.
 ///
-/// The [`Evm::transact`] and other such calls work over the [`OpTransaction<TxEnv>`] type.
+/// The [`Evm::transact`] and other such calls work over the `OpTransaction<TxEnv>` type.
 ///
 /// However, the [`Evm::HaltReason`] and [`Evm::Error`] leverage the optimism [`OpHaltReason`] and
 /// [`OpTransactionError`] as these are supersets of the eth types. This makes it easier to map eth
