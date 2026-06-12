@@ -101,6 +101,11 @@ NETWORK_TEST_EXCLUDES = [
     "test(/test_cmd::spec::test_set_evm_version/)",
     "test(/test_cmd::testdata/)",
     "test(/backend::tests::can_read_write_cache/)",
+    # Toolchain-nondeterministic (not network): CI's Linux solc emits a "Warning (6335):
+    # error will be promoted to keyword" block for the test fixture that macOS solc does not,
+    # so this upstream forge-backtrace snapshot cannot be regenerated deterministically across
+    # platforms. base-anvil never changes forge's backtrace formatting.
+    "test(/backtrace::test_library_backtrace/)",
 ]
 
 # The `all` case runs the full foundry+anvil suite EXCEPT ext_integration (covered by the
