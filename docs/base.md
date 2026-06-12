@@ -1,8 +1,7 @@
 # Testing your Base app with base-anvil
 
 `base-anvil` is a build of Foundry (`forge`, `anvil`, `cast`, `chisel`) that
-understands Base's native precompiles: the B-20 token factory, B-20 tokens, the
-PolicyRegistry, and the ActivationRegistry. It lets you build and test Base apps
+understands Base's native precompiles. It lets you build and test Base apps
 against real precompile behavior, locally, without a live network.
 
 ## Install
@@ -19,8 +18,10 @@ installs the Base build under **namespaced commands**: `base-forge`, `base-cast`
 `forge`/`cast`/`anvil`/`chisel`, is left completely untouched, so the two
 toolchains coexist: keep using `forge` for everyday work, and reach for
 `base-forge` only when you want Base precompile behavior. Re-run `base-foundryup`
-any time to update. Each build is reproduced from a specific `base/base` commit;
-`base-anvil --version` prints that commit.
+any time to update. Each build reproduces a specific `base/base` commit, shown
+in the title of its [GitHub release](https://github.com/base/base-anvil/releases)
+(`anvil --version` reports base-anvil's own build version and commit, not the
+`base/base` commit).
 
 > `base-foundryup` and `foundryup` are independent: `base-foundryup` manages only
 > the Base build and self-updates separately, so installing or updating Base
