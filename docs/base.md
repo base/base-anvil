@@ -26,6 +26,23 @@ any time to update. Each build is reproduced from a specific `base/base` commit;
 > the Base build and self-updates separately, so installing or updating Base
 > never changes which stock Foundry version you have.
 
+## Picking the Base version
+
+base-anvil's versioned releases are named after the **Base chain release** they
+reproduce: a base-anvil `v1.1.0` build runs the precompile behavior of Base
+**v1.1.0 ("Beryl")**. (The tool's own `--version`, e.g. `1.6.0-nightly`, is just
+the underlying Foundry version and is unrelated to the Base version.) To install
+a specific Base release by name:
+
+```bash
+base-foundryup --install v1.1.0
+```
+
+With no version, `base-foundryup` installs the latest build. Each release on the
+[releases page](https://github.com/base/base-anvil/releases) is titled with the
+exact `base/base` commit it reproduces, and maintainer details live in
+[`RELEASES.md`](../RELEASES.md).
+
 ## Add the Base interfaces
 
 ```bash

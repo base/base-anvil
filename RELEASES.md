@@ -76,6 +76,27 @@ GitHub Releases**; one is a **label tag** for resolution only.
 | `nightly-base-<base/base-short-sha>` | tag only (no assets) | A moving label pointing at the newest base-anvil commit built against that `base/base` commit. Lets `base/base`'s own tooling resolve "the latest base-anvil for this chain commit" without hardcoding a base-anvil sha. **Not** a download target. |
 | `v*.*.*` / `stable` / `rc` | release (versioned) | Created by pushing the matching tag; marked as a normal (non-pre) release. None cut yet — everything so far is nightly. |
 
+## Versioning: release names track base/base
+
+The binary's own version (e.g. `1.6.0-nightly`, shown by `anvil --version`) is
+inherited from upstream Foundry and says **nothing** about which Base chain
+version it reproduces. The Base version is conveyed by the **release name**:
+
+- **Versioned releases are named to match the `base/base` release they
+  reproduce.** A base-anvil `v1.1.0` release reproduces Base **v1.1.0
+  ("Beryl")** — the same precompile behavior that Base release ships. This is
+  the human-friendly handle to reach for instead of a 40-char commit sha.
+- **Nightlies** are named `nightly-<base-anvil-sha>` and titled
+  `Nightly (date, base <base/base-short-sha>)`, so the chain commit is still
+  visible without a stable version number.
+- **`nightly-base-<base/base-short-sha>`** is the label tag that resolves "the
+  newest base-anvil for this exact `base/base` commit."
+
+So once a stable Beryl release is cut, `base-foundryup --install v1.1.0` gets
+you the Beryl build by name. Until then, use the dated `nightly-<sha>` whose
+title shows the `base/base` commit it was built against. (Defaulting
+`base-foundryup` to the stable Beryl release for launch is tracked separately.)
+
 ## Where artifacts land
 
 GitHub Releases on this repo: <https://github.com/base/base-anvil/releases>.
