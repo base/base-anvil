@@ -481,7 +481,7 @@ mod tests {
         let client = config.into_client().unwrap();
         assert_eq!(
             client.etherscan_api_url().as_str(),
-            "https://api.etherscan.io/v2/api?chainid=1"
+            "https://api.etherscan.io/api"
         );
 
         unsafe {

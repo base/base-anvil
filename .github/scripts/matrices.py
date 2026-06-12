@@ -77,10 +77,42 @@ t_macos = Target("macos-latest", "aarch64-apple-darwin", "macosx-aarch64")
 t_windows = Target("windows-latest", "x86_64-pc-windows-msvc", "windows-amd64")
 targets = [t_linux_x86] if is_pr else [t_linux_x86, t_linux_arm, t_macos, t_windows]
 
+# base-anvil's only behavioral delta vs upstream Foundry is the `--base` precompile
+# support (crates/evm/networks). It does NOT modify forking, live-RPC, Etherscan/ENS,
+# git dependency installation, or docs fetching. Tests exercising those upstream features
+# depend on external endpoints (archive RPC nodes, Etherscan, GitHub, book.getfoundry.sh)
+# that are rate-limited or unavailable in CI, making the suite nondeterministically red.
+# Upstream foundry-rs/foundry already covers them, so we scope them out of base-anvil's
+# `all` suite to keep CI deterministic. Keep this list curated: only add tests that exercise
+# upstream behavior base-anvil never changes (never base-specific or anvil-core regressions).
+NETWORK_TEST_EXCLUDES = [
+    "test(/fork/)",  # all forking tests (anvil, forge test_cmd, evm-core, traces, eip4844, simulate, state)
+    "package(cast)",  # cast CLI suite is overwhelmingly live-RPC / Etherscan / ENS integration
+    "test(/\\binstall::/)",  # git-network dependency installation
+    "test(/ensure_lint_rule_docs/)",  # fetches https://book.getfoundry.sh
+    # Remaining non-"fork"-named RPC / broadcast tests:
+    "test(/script::can_broadcast/)",
+    "test(/script::can_execute_script_command_with_manual_gas_limit/)",
+    "test(/script::should_set_correct_sender_nonce_via_cli/)",
+    "test(/script::call_to_non_contract_address_does_not_panic/)",
+    "test(/anvil_api::can_impersonate_gnosis_safe/)",
+    "test(/eip4844::can_send_eip4844_transaction_eth_send_transaction/)",
+    "test(/genesis::chain_id_precedence/)",
+    "test(/test_cmd::spec::test_set_evm_version/)",
+    "test(/test_cmd::testdata/)",
+    "test(/backend::tests::can_read_write_cache/)",
+]
+
+# The `all` case runs the full foundry+anvil suite EXCEPT ext_integration (covered by the
+# `external` case) and EXCEPT the network-dependent upstream tests listed above.
+_all_filter = " & ".join(
+    ["!test(/\\bext_integration/)"] + [f"!{e}" for e in NETWORK_TEST_EXCLUDES]
+)
+
 config = [
     Case(
         name="all",
-        filter="!test(/\\bext_integration/)",
+        filter=_all_filter,
         n_partitions=1,
         pr_cross_platform=True,
     ),
