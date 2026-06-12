@@ -1,8 +1,7 @@
 # base-anvil releases & the base/base pin
 
 This repo is a fork of Foundry (`forge`, `cast`, `anvil`, `chisel`) that adds a
-`--base` mode dispatching Base's native precompiles (the B-20 token factory,
-B-20 tokens, the PolicyRegistry, and the ActivationRegistry). Those precompiles
+`--base` mode dispatching Base's native precompiles. Those precompiles
 are not reimplemented here — they are compiled in from
 [`base/base`](https://github.com/base/base) via a pinned git dependency. Every
 binary we ship therefore *reproduces a specific `base/base` commit*.
@@ -71,10 +70,10 @@ GitHub Releases**; one is a **label tag** for resolution only.
 
 | Ref | Kind | Meaning |
 | --- | --- | --- |
-| `nightly` | release (rolling) | Always the newest nightly. Its git tag is moved to the built commit each run. This is what `base-foundryup` installs by default. |
+| `nightly` | release (rolling) | Always the newest nightly. Its git tag is moved to the built commit each run. Install it explicitly with `base-foundryup --install nightly`. |
 | `nightly-<base-anvil-sha>` | release (immutable) | A permanent snapshot of one build, e.g. `nightly-df3a4abdc…`. Titled `Nightly (YYYY-MM-DD, base <base/base-short-sha>)` so the targeted `base/base` commit is visible in the name. Use these to pin or roll back. |
 | `nightly-base-<base/base-short-sha>` | tag only (no assets) | A moving label pointing at the newest base-anvil commit built against that `base/base` commit. Lets `base/base`'s own tooling resolve "the latest base-anvil for this chain commit" without hardcoding a base-anvil sha. **Not** a download target. |
-| `v*.*.*` / `stable` / `rc` | release (versioned) | Created by pushing the matching tag; marked as a normal (non-pre) release. None cut yet — everything so far is nightly. |
+| `v*.*.*` / `stable` / `rc` | release (versioned) | Created by pushing the matching tag; marked as a normal (non-pre) release. |
 
 ## Versioning: release names track base/base
 
@@ -94,8 +93,9 @@ version it reproduces. The Base version is conveyed by the **release name**:
 
 So once a stable Beryl release is cut, `base-foundryup --install v1.1.0` gets
 you the Beryl build by name. Until then, use the dated `nightly-<sha>` whose
-title shows the `base/base` commit it was built against. (Defaulting
-`base-foundryup` to the stable Beryl release for launch is tracked separately.)
+title shows the `base/base` commit it was built against. Once stable releases
+exist, `base-foundryup` will default to the latest stable release rather than
+the rolling nightly.
 
 ## Where artifacts land
 
@@ -115,7 +115,7 @@ The build matrix covers six targets: `linux_amd64`, `linux_arm64`,
 
 ## Downloading & using a specific build
 
-The easy path (rolling latest):
+The easy path (latest stable, once stable releases exist):
 
 ```bash
 base-foundryup
