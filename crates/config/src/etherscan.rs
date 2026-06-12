@@ -479,10 +479,7 @@ mod tests {
         let config = resolved.remove("mainnet").unwrap().unwrap();
         assert_eq!(config.key, "ABCDEFG");
         let client = config.into_client().unwrap();
-        assert_eq!(
-            client.etherscan_api_url().as_str(),
-            "https://api.etherscan.io/api"
-        );
+        assert_eq!(client.etherscan_api_url().as_str(), "https://api.etherscan.io/api");
 
         unsafe {
             std::env::remove_var(env);
