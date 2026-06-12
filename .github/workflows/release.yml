@@ -161,7 +161,9 @@ jobs:
             arch: amd64
           # arm64 Linux builds run on native arm64 runners (not x86 + QEMU):
           # emulating the post-reth-v2 build under cross OOM-kills the runner.
-          - runner: ubuntu-24.04-arm
+          # Pinned to 22.04 (not 24.04) to match the amd64 gnu leg's glibc floor:
+          # ubuntu-24.04-arm links against glibc 2.39 and fails on Ubuntu 22.04.
+          - runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             svm_target_platform: linux-aarch64
             platform: linux
@@ -221,7 +223,7 @@ jobs:
 
           # Fat LTO (profile.dist) OOM-kills the 16GB arm64 runner at link time;
           # build arm64 without LTO + parallel codegen units, matching base/base's
-          # base-anvil-package build on the same ubuntu-24.04-arm runner.
+          # base-anvil-package build on a 16GB arm64 runner.
           if [[ "$TARGET" == "aarch64-unknown-linux-gnu" ]]; then
             export CARGO_PROFILE_DIST_LTO=false
             export CARGO_PROFILE_DIST_CODEGEN_UNITS=16
