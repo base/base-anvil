@@ -2163,7 +2163,7 @@ dependencies = [
 [[package]]
 name = "base-common-chains"
 version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=572a3c564b2b13227603c26b4fac7d52c9ce0060#572a3c564b2b13227603c26b4fac7d52c9ce0060"
+source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
 dependencies = [
  "alloy-chains",
  "alloy-eips 2.0.5",
@@ -2180,7 +2180,7 @@ dependencies = [
 [[package]]
 name = "base-common-genesis"
 version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=572a3c564b2b13227603c26b4fac7d52c9ce0060#572a3c564b2b13227603c26b4fac7d52c9ce0060"
+source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -2197,7 +2197,7 @@ dependencies = [
 [[package]]
 name = "base-common-precompiles"
 version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=572a3c564b2b13227603c26b4fac7d52c9ce0060#572a3c564b2b13227603c26b4fac7d52c9ce0060"
+source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
 dependencies = [
  "alloy-evm",
  "alloy-primitives",
@@ -2211,7 +2211,7 @@ dependencies = [
 [[package]]
 name = "base-precompile-macros"
 version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=572a3c564b2b13227603c26b4fac7d52c9ce0060#572a3c564b2b13227603c26b4fac7d52c9ce0060"
+source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
 dependencies = [
  "alloy-primitives",
  "proc-macro2",
@@ -2222,7 +2222,7 @@ dependencies = [
 [[package]]
 name = "base-precompile-storage"
 version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=572a3c564b2b13227603c26b4fac7d52c9ce0060#572a3c564b2b13227603c26b4fac7d52c9ce0060"
+source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
 dependencies = [
  "alloy-evm",
  "alloy-primitives",
