@@ -1,0 +1,80 @@
+name: smoke
+
+# Validate ALREADY-PUBLISHED base-anvil binaries on each target OS by doing
+# exactly what an external developer does: run the public install one-liner,
+# then run a real Base precompile test. This is the per-platform coverage a
+# single laptop cannot do locally (BOP-385).
+#
+# v0 scope: the POSIX (bash) legs only -- Linux gnu (amd64 on new + old glibc,
+# arm64) and macOS (arm64 + Intel). Windows and Alpine/musl are deliberately
+# deferred to a follow-up iteration: they need extra shell/dependency handling.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published release to validate (e.g. v1.1.0-rc.19). Blank = base-foundryup default."
+        required: false
+        default: ""
+  # Once this is green, enable a daily run against the current default release:
+  # schedule:
+  #   - cron: "0 12 * * *"
+
+permissions: {}
+
+jobs:
+  smoke:
+    name: smoke ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # one platform failing must not hide the others
+      matrix:
+        include:
+          - label: linux-amd64 (glibc, ubuntu 24.04)
+            runner: ubuntu-24.04
+          - label: linux-amd64 (older glibc, ubuntu 22.04)
+            runner: ubuntu-22.04
+          - label: linux-arm64 (glibc, ubuntu 24.04)
+            runner: ubuntu-24.04-arm
+          - label: macos-arm64
+            runner: macos-latest
+          - label: macos-amd64 (intel)
+            runner: macos-13
+    steps:
+      - name: Check out the proof test
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install base-anvil via the public flow
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
+        run: |
+          set -euo pipefail
+          curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
+          export PATH="$HOME/.foundry/bin:$PATH"
+
+          # Resilient to either install variant: the namespaced base-foundryup
+          # (current default branch) or the older `foundryup --network base`.
+          if command -v base-foundryup >/dev/null 2>&1; then
+            base-foundryup ${VERSION:+--install "$VERSION"}
+            echo "FORGE=base-forge" >> "$GITHUB_ENV"
+          else
+            foundryup --network base ${VERSION:+--install "$VERSION"}
+            echo "FORGE=forge" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run the Base proof test
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.foundry/bin:$PATH"
+          cd smoke
+          if [ "$FORGE" = base-forge ]; then
+            base-forge test -vvv # base-forge enables Base by default
+          else
+            forge test --base -vvv
+          fi
