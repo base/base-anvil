@@ -5,9 +5,9 @@ name: smoke
 # then run a real Base precompile test. This is the per-platform coverage a
 # single laptop cannot do locally (BOP-385).
 #
-# v0 scope: the POSIX (bash) legs only -- Linux gnu (amd64 on new + old glibc,
-# arm64) and macOS (arm64 + Intel). Windows and Alpine/musl are deliberately
-# deferred to a follow-up iteration: they need extra shell/dependency handling.
+# v0 scope: Linux gnu (amd64 on new + old glibc, arm64) and macOS arm64.
+# Deferred to follow-ups: Windows and Alpine/musl (extra shell/dependency
+# handling) and Intel macOS (macos-13 runner does not provision here).
 
 on:
   workflow_dispatch:
@@ -46,8 +46,12 @@ jobs:
             runner: ubuntu-24.04-arm
           - label: macos-arm64
             runner: macos-latest
-          - label: macos-amd64 (intel)
-            runner: macos-13
+          # macos-amd64 (Intel) is deferred: the macos-13 runner does not
+          # provision in this org (it sits queued until the 24h timeout, the
+          # same symptom noted in BOP-367). Intel-Mac coverage will come via a
+          # Rosetta-on-arm64 run or a self-hosted runner in a follow-up.
+          # - label: macos-amd64 (intel)
+          #   runner: macos-13
     steps:
       - name: Check out the proof test
         uses: actions/checkout@v6
@@ -61,16 +65,21 @@ jobs:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           set -euo pipefail
+          # Pin the install dir: the installer otherwise uses
+          # ${XDG_CONFIG_HOME:-$HOME}/.foundry, and XDG_CONFIG_HOME is set on the
+          # Linux runners (but not macOS), which moves the bin dir out from under us.
+          export FOUNDRY_DIR="$HOME/.foundry"
           curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
-          export PATH="$HOME/.foundry/bin:$PATH"
+          bin="$FOUNDRY_DIR/bin"
+          echo "$bin" >> "$GITHUB_PATH"
 
           # Resilient to either install variant: the namespaced base-foundryup
           # (current default branch) or the older `foundryup --network base`.
-          if command -v base-foundryup >/dev/null 2>&1; then
-            base-foundryup ${VERSION:+--install "$VERSION"}
+          if [ -x "$bin/base-foundryup" ]; then
+            "$bin/base-foundryup" ${VERSION:+--install "$VERSION"}
             echo "FORGE=base-forge" >> "$GITHUB_ENV"
           else
-            foundryup --network base ${VERSION:+--install "$VERSION"}
+            "$bin/foundryup" --network base ${VERSION:+--install "$VERSION"}
             echo "FORGE=forge" >> "$GITHUB_ENV"
           fi
 
@@ -78,7 +87,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PATH="$HOME/.foundry/bin:$PATH"
           cd smoke
           if [ "$FORGE" = base-forge ]; then
             base-forge test -vvv # base-forge enables Base by default
