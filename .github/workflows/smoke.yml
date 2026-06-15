@@ -16,6 +16,13 @@ on:
         description: "Published release to validate (e.g. v1.1.0-rc.19). Blank = base-foundryup default."
         required: false
         default: ""
+  # Self-test the smoke harness whenever it changes (and on this PR). Scoped to
+  # smoke files so it does not run on unrelated PRs. workflow_dispatch only
+  # becomes triggerable once this file is on the default branch.
+  pull_request:
+    paths:
+      - "smoke/**"
+      - ".github/workflows/smoke.yml"
   # Once this is green, enable a daily run against the current default release:
   # schedule:
   #   - cron: "0 12 * * *"
