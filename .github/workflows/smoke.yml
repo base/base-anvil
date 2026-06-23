@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Published release to validate (e.g. v1.1.0-rc.19). Blank = base-foundryup default."
+        description: "Published release to validate (e.g. v1.1.0). Blank = base-foundryup default."
         required: false
         default: ""
   # Self-test the smoke harness whenever it changes (and on this PR). Scoped to
