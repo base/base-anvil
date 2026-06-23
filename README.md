@@ -24,6 +24,26 @@
 
 ---
 
+## base-anvil: Base's Foundry build
+
+This repository is **base-anvil**, a fork of Foundry that teaches `forge`, `cast`, `anvil`, and `chisel` about Base's native precompiles: the B20 token factory, B20 tokens, the PolicyRegistry, and the ActivationRegistry. Stock Foundry cannot simulate calls to those precompile addresses (they hold no contract bytecode) and aborts with `call to non-contract address`. base-anvil registers them into its EVM, so you can build and test Base apps locally, with no live network.
+
+Install it alongside your existing Foundry. It never overwrites stock `foundryup` or your `forge`/`cast`/`anvil`/`chisel`:
+
+```bash
+curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
+base-foundryup
+```
+
+This adds `base-foundryup` plus the namespaced `base-forge`, `base-cast`, `base-anvil`, and `base-chisel` commands, which enable Base precompiles by default. Then `base-forge test` runs your tests against real precompile behavior.
+
+- **Test your Base app with base-anvil:** [`docs/base.md`](./docs/base.md)
+- **Release model and the `base/base` pin (maintainers):** [`RELEASES.md`](./RELEASES.md)
+
+Everything below is inherited from upstream Foundry. The standard `forge`/`cast`/`anvil`/`chisel` reference applies unchanged; only the Base additions above are specific to this fork.
+
+---
+
 ### Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.
 
 Foundry consists of:
@@ -65,6 +85,8 @@ Foundry consists of:
   - **Optimized CI**: Accelerate builds, run tests and execute scripts using [Foundry's GitHub action][foundry-gha].
 
 ## Installation
+
+> **Installing the Base build?** Use `base-foundryup`, not the stock `foundryup` shown below. See [base-anvil: Base's Foundry build](#base-anvil-bases-foundry-build) above. The steps below install upstream Foundry.
 
 Getting started is very easy:
 
