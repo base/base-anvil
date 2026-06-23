@@ -135,10 +135,9 @@ main() {
   # Install by downloading binaries
   if [[ ( "$FOUNDRYUP_REPO" == "foundry-rs/foundry" || "$FOUNDRYUP_REPO" == "base/base-anvil" ) && -z "$FOUNDRYUP_BRANCH" && -z "$FOUNDRYUP_COMMIT" ]]; then
     if [[ "$FOUNDRYUP_NETWORK" == "base" ]]; then
-      # Pin bare `base-foundryup` to the Beryl Sepolia release for stable
-      # testnet bring-up. Flip to v1.1.0 (or stable) once final Beryl ships.
+      # Pin bare `base-foundryup` to the v1.1.0 (Beryl) release.
       # Rolling builds remain available via `base-foundryup --install nightly`.
-      FOUNDRYUP_VERSION=${FOUNDRYUP_VERSION:-v1.1.0-rc.19}
+      FOUNDRYUP_VERSION=${FOUNDRYUP_VERSION:-v1.1.0}
     else
       FOUNDRYUP_VERSION=${FOUNDRYUP_VERSION:-stable}
     fi
