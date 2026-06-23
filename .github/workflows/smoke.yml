@@ -7,7 +7,7 @@ name: smoke
 #
 # v0 scope: Linux gnu (amd64 and arm64, each on new + old glibc) and macOS arm64.
 # Deferred to follow-ups: Windows and Alpine/musl (extra shell/dependency
-# handling) and Intel macOS (macos-13 runner does not provision here).
+# handling) and Intel macOS (needs the macos-15-intel label; test-or-drop TBD).
 
 on:
   workflow_dispatch:
@@ -48,12 +48,14 @@ jobs:
             runner: ubuntu-22.04-arm
           - label: macos-arm64
             runner: macos-latest
-          # macos-amd64 (Intel) is deferred: the macos-13 runner does not
-          # provision in this org (it sits queued until the 24h timeout, the
-          # same symptom noted in BOP-367). Intel-Mac coverage will come via a
-          # Rosetta-on-arm64 run or a self-hosted runner in a follow-up.
+          # macos-amd64 (Intel) is deferred. GitHub retired the macos-13 image
+          # on 2025-12-04, so that label never provisions (jobs queue until they
+          # time out). Intel x86_64 macOS now runs on the macos-15-intel label,
+          # supported until ~Aug 2027 when Actions drops Intel macOS entirely.
+          # Follow-up decision: cover Intel-Mac (uncomment the leg below) or drop
+          # the darwin_amd64 build from the release pipeline. Don't ship it untested.
           # - label: macos-amd64 (intel)
-          #   runner: macos-13
+          #   runner: macos-15-intel
     steps:
       - name: Check out the proof test
         uses: actions/checkout@v6
