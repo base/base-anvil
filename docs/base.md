@@ -1,9 +1,9 @@
 # Testing your Base app with base-anvil
 
 `base-anvil` is a build of Foundry (`forge`, `anvil`, `cast`, `chisel`) that
-understands Base's native precompiles: the B20 token factory, B20 tokens, the
-PolicyRegistry, and the ActivationRegistry. It lets you build and test Base apps
-against real precompile behavior, locally, without a live network.
+understands Base's native precompiles, such as the B20 token factory, B20 tokens,
+the PolicyRegistry, and the ActivationRegistry. It lets you build and test Base
+apps against real precompile behavior, locally, without a live network.
 
 Stock Foundry knows nothing about these precompiles. A `forge test` that calls a
 B20 precompile address gets empty data back (the address holds no bytecode), and
@@ -60,8 +60,8 @@ base-forge install base/base-std
 ```
 
 [base-std](https://github.com/base/base-std) provides the Solidity handles for the
-precompiles: `StdPrecompiles.sol` plus `IB20`, `IB20Factory`, `IPolicyRegistry`,
-and `IActivationRegistry`.
+precompiles, including `StdPrecompiles.sol`, `IB20`, `IB20Factory`,
+`IPolicyRegistry`, and `IActivationRegistry`.
 
 ## Run your tests
 
@@ -110,10 +110,10 @@ node, or a live Base RPC). In a pure local test, the precompiles live inside
 
 ## The local base-anvil node
 
-A `base-anvil` node starts with Base's activation-gated features (B20 asset, B20
-stablecoin, PolicyRegistry) already active, matching a live Beryl-or-later chain,
-so you do not need to `activate()` anything by hand. Its chain id is `31337` and
-it ships the usual anvil pre-funded dev accounts.
+A `base-anvil` node starts with Base's activation-gated features (such as B20
+asset, B20 stablecoin, and PolicyRegistry) already active, matching a live
+Beryl-or-later chain, so you do not need to `activate()` anything by hand. Its
+chain id is `31337` and it ships the usual anvil pre-funded dev accounts.
 
 Networks that already have the precompiles active, for testing against a remote
 chain:
