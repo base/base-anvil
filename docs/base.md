@@ -30,7 +30,7 @@ installs the Base build under **namespaced commands**: `base-forge`, `base-cast`
 `forge`/`cast`/`anvil`/`chisel`, is left completely untouched, so the two
 toolchains coexist: keep using `forge` for everyday work, and reach for
 `base-forge` only when you want Base precompile behavior. Re-run `base-foundryup`
-any time to update.
+any time to reinstall or change versions.
 
 > `base-foundryup` and `foundryup` are independent: `base-foundryup` manages only
 > the Base build and self-updates separately, so installing or updating Base
@@ -48,9 +48,12 @@ a specific Base release by name:
 base-foundryup --install v1.1.0
 ```
 
-With no version, `base-foundryup` installs the latest build. Each release on the
-[releases page](https://github.com/base/base-anvil/releases) is titled with the
-exact `base/base` commit it reproduces, and maintainer details live in
+A bare `base-foundryup` installs the pinned default release (currently `v1.1.0`,
+the latest stable Beryl build), not a rolling latest; nightlies are opt-in with
+`base-foundryup --install nightly`. On the
+[releases page](https://github.com/base/base-anvil/releases), versioned releases
+are named for the Base version (e.g. `v1.1.0`) and nightlies are titled with the
+`base/base` commit they reproduce. Maintainer details live in
 [`RELEASES.md`](../RELEASES.md).
 
 ## Add the Base interfaces
