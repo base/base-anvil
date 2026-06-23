@@ -1,0 +1,99 @@
+name: smoke
+
+# Validate ALREADY-PUBLISHED base-anvil binaries on each target OS by doing
+# exactly what an external developer does: run the public install one-liner,
+# then run a real Base precompile test. This is the per-platform coverage a
+# single laptop cannot do locally (BOP-385).
+#
+# v0 scope: Linux gnu (amd64 and arm64, each on new + old glibc) and macOS arm64.
+# Deferred to follow-ups: Windows and Alpine/musl (extra shell/dependency
+# handling) and Intel macOS (needs the macos-15-intel label; test-or-drop TBD).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published release to validate (e.g. v1.1.0). Blank = base-foundryup default."
+        required: false
+        default: ""
+  # Self-test the smoke harness whenever it changes (and on this PR). Scoped to
+  # smoke files so it does not run on unrelated PRs. workflow_dispatch only
+  # becomes triggerable once this file is on the default branch.
+  pull_request:
+    paths:
+      - "smoke/**"
+      - ".github/workflows/smoke.yml"
+  # Once this is green, enable a daily run against the current default release:
+  # schedule:
+  #   - cron: "0 12 * * *"
+
+permissions: {}
+
+jobs:
+  smoke:
+    name: smoke ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # one platform failing must not hide the others
+      matrix:
+        include:
+          - label: linux-amd64 (glibc, ubuntu 24.04)
+            runner: ubuntu-24.04
+          - label: linux-amd64 (older glibc, ubuntu 22.04)
+            runner: ubuntu-22.04
+          - label: linux-arm64 (glibc, ubuntu 24.04)
+            runner: ubuntu-24.04-arm
+          - label: linux-arm64 (older glibc, ubuntu 22.04)
+            runner: ubuntu-22.04-arm
+          - label: macos-arm64
+            runner: macos-latest
+          # macos-amd64 (Intel) is deferred. GitHub retired the macos-13 image
+          # on 2025-12-04, so that label never provisions (jobs queue until they
+          # time out). Intel x86_64 macOS now runs on the macos-15-intel label,
+          # supported until ~Aug 2027 when Actions drops Intel macOS entirely.
+          # Follow-up decision: cover Intel-Mac (uncomment the leg below) or drop
+          # the darwin_amd64 build from the release pipeline. Don't ship it untested.
+          # - label: macos-amd64 (intel)
+          #   runner: macos-15-intel
+    steps:
+      - name: Check out the proof test
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install base-anvil via the public flow
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
+        run: |
+          set -euo pipefail
+          # Pin the install dir: the installer otherwise uses
+          # ${XDG_CONFIG_HOME:-$HOME}/.foundry, and XDG_CONFIG_HOME is set on the
+          # Linux runners (but not macOS), which moves the bin dir out from under us.
+          export FOUNDRY_DIR="$HOME/.foundry"
+          curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
+          bin="$FOUNDRY_DIR/bin"
+          echo "$bin" >> "$GITHUB_PATH"
+
+          # Resilient to either install variant: the namespaced base-foundryup
+          # (current default branch) or the older `foundryup --network base`.
+          if [ -x "$bin/base-foundryup" ]; then
+            "$bin/base-foundryup" ${VERSION:+--install "$VERSION"}
+            echo "FORGE=base-forge" >> "$GITHUB_ENV"
+          else
+            "$bin/foundryup" --network base ${VERSION:+--install "$VERSION"}
+            echo "FORGE=forge" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run the Base proof test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd smoke
+          if [ "$FORGE" = base-forge ]; then
+            base-forge test -vvv # base-forge enables Base by default
+          else
+            forge test --base -vvv
+          fi
