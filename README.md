@@ -26,21 +26,21 @@
 
 ## base-anvil: Base's Foundry build
 
-This repository is **base-anvil**, a fork of Foundry that teaches `forge`, `cast`, `anvil`, and `chisel` about Base's native precompiles: the B20 token factory, B20 tokens, the PolicyRegistry, and the ActivationRegistry. Stock Foundry cannot simulate calls to those precompile addresses (they hold no contract bytecode) and aborts with `call to non-contract address`. base-anvil registers them into its EVM, so you can build and test Base apps locally, with no live network.
+base-anvil is a fork of Foundry that teaches `forge`, `cast`, `anvil`, and `chisel` about Base's native precompiles, such as the B20 token factory, B20 tokens, the PolicyRegistry, and the ActivationRegistry. Stock Foundry can't reach them and aborts with `call to non-contract address`; base-anvil registers them into its EVM so you can build and test Base apps locally, with no live network.
 
-Install it alongside your existing Foundry. It never overwrites stock `foundryup` or your `forge`/`cast`/`anvil`/`chisel`:
+Install alongside your existing Foundry (it never overwrites stock `foundryup` or your `forge`/`cast`/`anvil`/`chisel`):
 
 ```bash
 curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
 base-foundryup
 ```
 
-This adds `base-foundryup` plus the namespaced `base-forge`, `base-cast`, `base-anvil`, and `base-chisel` commands, which enable Base precompiles by default. Then `base-forge test` runs your tests against real precompile behavior.
+This adds `base-foundryup` and the namespaced `base-forge`/`base-cast`/`base-anvil`/`base-chisel` commands, which enable Base precompiles by default.
 
 - **Test your Base app with base-anvil:** [`docs/base.md`](./docs/base.md)
 - **Release model and the `base/base` pin (maintainers):** [`RELEASES.md`](./RELEASES.md)
 
-Everything below is inherited from upstream Foundry. The standard `forge`/`cast`/`anvil`/`chisel` reference applies unchanged; only the Base additions above are specific to this fork.
+Everything below is inherited from upstream Foundry and works unchanged; only the Base additions above are specific to this fork.
 
 ---
 
