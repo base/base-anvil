@@ -34,8 +34,6 @@ jobs:
     name: smoke ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
-    # A leg flagged experimental reports its result but does not fail the run.
-    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false # one platform failing must not hide the others
       matrix:
@@ -46,13 +44,8 @@ jobs:
             runner: ubuntu-22.04
           - label: linux-arm64 (glibc, ubuntu 24.04)
             runner: ubuntu-24.04-arm
-          # Known-failing until the arm64 glibc-floor fix (#42) ships to the
-          # release base-foundryup installs by default: rc.19's arm64 gnu binary
-          # needs GLIBC_2.38/2.39, so it fails on old-glibc arm64. Kept running
-          # (non-blocking) so it auto-flips green once a fixed release lands.
           - label: linux-arm64 (older glibc, ubuntu 22.04)
             runner: ubuntu-22.04-arm
-            experimental: true
           - label: macos-arm64
             runner: macos-latest
           # macos-amd64 (Intel) is deferred: the macos-13 runner does not
