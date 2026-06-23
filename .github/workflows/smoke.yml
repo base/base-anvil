@@ -5,7 +5,7 @@ name: smoke
 # then run a real Base precompile test. This is the per-platform coverage a
 # single laptop cannot do locally (BOP-385).
 #
-# v0 scope: Linux gnu (amd64 on new + old glibc, arm64) and macOS arm64.
+# v0 scope: Linux gnu (amd64 and arm64, each on new + old glibc) and macOS arm64.
 # Deferred to follow-ups: Windows and Alpine/musl (extra shell/dependency
 # handling) and Intel macOS (macos-13 runner does not provision here).
 
@@ -44,6 +44,8 @@ jobs:
             runner: ubuntu-22.04
           - label: linux-arm64 (glibc, ubuntu 24.04)
             runner: ubuntu-24.04-arm
+          - label: linux-arm64 (older glibc, ubuntu 22.04)
+            runner: ubuntu-22.04-arm
           - label: macos-arm64
             runner: macos-latest
           # macos-amd64 (Intel) is deferred: the macos-13 runner does not
