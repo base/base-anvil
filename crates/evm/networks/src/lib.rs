@@ -13,7 +13,7 @@ use alloy_eips::eip1559::BaseFeeParams;
 use alloy_evm::precompiles::{DynPrecompile, PrecompilesMap};
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use alloy_primitives::{Address, U256, address, keccak256, map::AddressHashMap};
-use base_common_chains::BaseUpgrade;
+use base_common_genesis::BaseUpgrade;
 use base_common_precompiles::{
     ActivationFeature, ActivationRegistry, ActivationRegistryStorage, B20AssetPrecompile,
     B20Factory, B20FactoryStorage, B20StablecoinPrecompile, B20Variant, PolicyRegistryPrecompile,

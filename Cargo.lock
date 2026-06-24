@@ -2162,8 +2162,8 @@ dependencies = [
 
 [[package]]
 name = "base-common-chains"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=2d880020851d36462683c413fc9db0f9b424278c#2d880020851d36462683c413fc9db0f9b424278c"
 dependencies = [
  "alloy-chains",
  "alloy-eips 2.0.5",
@@ -2179,8 +2179,8 @@ dependencies = [
 
 [[package]]
 name = "base-common-genesis"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=2d880020851d36462683c413fc9db0f9b424278c#2d880020851d36462683c413fc9db0f9b424278c"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -2196,8 +2196,8 @@ dependencies = [
 
 [[package]]
 name = "base-common-precompiles"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=2d880020851d36462683c413fc9db0f9b424278c#2d880020851d36462683c413fc9db0f9b424278c"
 dependencies = [
  "alloy-evm",
  "alloy-primitives",
@@ -2210,8 +2210,8 @@ dependencies = [
 
 [[package]]
 name = "base-precompile-macros"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=2d880020851d36462683c413fc9db0f9b424278c#2d880020851d36462683c413fc9db0f9b424278c"
 dependencies = [
  "alloy-primitives",
  "proc-macro2",
@@ -2221,8 +2221,8 @@ dependencies = [
 
 [[package]]
 name = "base-precompile-storage"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=2d880020851d36462683c413fc9db0f9b424278c#2d880020851d36462683c413fc9db0f9b424278c"
 dependencies = [
  "alloy-evm",
  "alloy-primitives",
@@ -5150,6 +5150,7 @@ dependencies = [
  "alloy-op-hardforks",
  "alloy-primitives",
  "base-common-chains",
+ "base-common-genesis",
  "base-common-precompiles",
  "clap",
  "revm 40.0.3",
