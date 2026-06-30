@@ -336,6 +336,7 @@ impl EthApi {
             EthRequest::DebugGetRawTransactions(block) => {
                 self.raw_transactions(block).await.to_rpc_result()
             }
+            EthRequest::DebugGetRawHeader(block) => self.raw_header(block).await.to_rpc_result(),
             // non eth-standard rpc calls
             EthRequest::DebugTraceTransaction(tx, opts) => {
                 self.debug_trace_transaction(tx, opts).await.to_rpc_result()
@@ -1926,6 +1927,15 @@ impl EthApi {
             return Ok(Vec::new());
         };
         Ok(block.body.transactions.into_iter().map(|tx| tx.encoded_2718().into()).collect())
+    }
+
+    /// Returns RLP encoded raw block header.
+    ///
+    /// Handler for RPC call: `debug_getRawHeader`.
+    pub async fn raw_header(&self, block: BlockId) -> Result<Bytes> {
+        node_info!("debug_getRawHeader");
+        let block = self.backend.get_block(block).ok_or(BlockchainError::BlockNotFound)?;
+        Ok(alloy_rlp::encode(&block.header).into())
     }
 
     /// Returns EIP-2718 encoded raw transaction by block hash and index
