@@ -32,6 +32,9 @@ foundry-wallets.workspace = true
 forge-fmt.workspace = true
 foundry-primitives.workspace = true
 
+# EIP-8130 (tx type 0x79) consensus types for `cast send/mktx --8130`.
+base-common-consensus.workspace = true
+
 alloy-chains.workspace = true
 alloy-consensus = { workspace = true, features = ["serde", "kzg"] }
 alloy-contract.workspace = true

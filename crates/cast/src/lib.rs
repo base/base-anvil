@@ -61,6 +61,7 @@ pub mod opts;
 
 pub mod base;
 pub(crate) mod debug;
+pub mod eip8130;
 pub mod errors;
 mod rlp_converter;
 pub mod tx;

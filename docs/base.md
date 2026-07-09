@@ -142,5 +142,7 @@ chain:
   creates a token, mints supply, and verifies the balance using these commands.
 - **The B20 token standard:**
   [docs.base.org/base-chain/specs/upgrades/beryl/b20](https://docs.base.org/base-chain/specs/upgrades/beryl/b20).
+- **Send EIP-8130 (account abstraction) transactions with cast:**
+  [`docs/eip8130.md`](./eip8130.md).
 - **Maintainers, the `base/base` pin and release lifecycle:**
   [`RELEASES.md`](../RELEASES.md).

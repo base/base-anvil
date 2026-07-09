@@ -126,6 +126,54 @@ impl SendTxArgs {
             provider.client().set_poll_interval(Duration::from_secs(interval))
         }
 
+        let timeout = send_tx.timeout.unwrap_or(config.transaction_timeout);
+
+        // EIP-8130 (type 0x79) transactions are built, signed, and encoded directly (alloy's
+        // `EthereumWallet` doesn't understand the type), then broadcast as raw transactions
+        if tx.eip8130.eip8130 {
+            if unlocked {
+                return Err(eyre!(
+                    "EIP-8130 transactions require a local signer and can't be sent with --unlocked"
+                ));
+            }
+            if send_tx.eth.wallet.browser {
+                return Err(eyre!("EIP-8130 transactions are not supported with browser wallets."));
+            }
+            if code.is_some() {
+                return Err(eyre!("EIP-8130 transactions can't be CREATE transactions."));
+            }
+
+            let signer = send_tx.eth.wallet.signer().await?;
+            let from = signer.address();
+            tx::validate_from_address(send_tx.eth.wallet.from, from)?;
+
+            let raw_tx = crate::eip8130::build_raw_transaction(
+                &provider, &signer, &tx, &config, to, sig, args,
+            )
+            .await?;
+
+            let cast = CastTxSender::new(&provider);
+            let pending_tx = cast.send_raw(&raw_tx).await?;
+            let tx_hash = pending_tx.inner().tx_hash();
+
+            if send_tx.cast_async {
+                sh_println!("{tx_hash:#x}")?;
+            } else {
+                let receipt = cast
+                    .receipt(
+                        format!("{tx_hash:#x}"),
+                        None,
+                        send_tx.confirmations,
+                        Some(timeout),
+                        false,
+                    )
+                    .await?;
+                sh_println!("{receipt}")?;
+            }
+
+            return Ok(());
+        }
+
         let builder = CastTxBuilder::new(&provider, tx, &config)
             .await?
             .with_to(to)
@@ -133,8 +181,6 @@ impl SendTxArgs {
             .with_code_sig_and_args(code, sig, args)
             .await?
             .with_blob_data(blob_data)?;
-
-        let timeout = send_tx.timeout.unwrap_or(config.transaction_timeout);
 
         // Check if this is a Tempo transaction - requires special handling for local signing
         let is_tempo = builder.is_tempo();

@@ -2178,6 +2178,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "base-common-consensus"
+version = "0.0.0"
+source = "git+https://github.com/base/base?rev=a70d193532171f8ad1299d1c80f46bc6625789aa#a70d193532171f8ad1299d1c80f46bc6625789aa"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips 2.0.5",
+ "alloy-evm",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types-eth",
+ "alloy-serde 2.0.5",
+ "bytes",
+ "reth-codecs 0.4.2",
+ "reth-primitives-traits 0.4.2",
+ "reth-zstd-compressors 0.4.2",
+ "revm 40.0.3",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "base-common-genesis"
 version = "1.1.0"
 source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
@@ -2756,6 +2777,7 @@ dependencies = [
  "alloy-sol-types",
  "alloy-transport",
  "anvil",
+ "base-common-consensus",
  "chrono",
  "clap",
  "clap_complete",
@@ -8818,6 +8840,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "reth-codecs"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9c37bb4d1bac98661bf9128e1141b969034640d68697b22f70377e492fd332c"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips 2.0.5",
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-trie",
+ "bytes",
+ "modular-bitfield",
+ "parity-scale-codec",
+ "reth-codecs-derive 0.4.2",
+ "reth-zstd-compressors 0.4.2",
+ "serde",
+]
+
+[[package]]
 name = "reth-codecs-derive"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8833,6 +8874,17 @@ name = "reth-codecs-derive"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "634c90f1cc0f9887680ca785b0b21aa961070b9465917bf65afaec56a6d005bb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
+name = "reth-codecs-derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ceeb8dab90194305d3f7e3f043a22d2db1fb54b6dcf5d8e75c5a4fa8540e1f57"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8905,6 +8957,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "reth-primitives-traits"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9102518f0bbf99bc8f0e656a56fb2a7513248630275b608d3706076a82fde42b"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips 2.0.5",
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rpc-types-eth",
+ "alloy-trie",
+ "bytes",
+ "dashmap",
+ "derive_more",
+ "once_cell",
+ "reth-codecs 0.4.2",
+ "revm-bytecode 11.0.1",
+ "revm-primitives 24.0.1",
+ "revm-state 12.0.1",
+ "secp256k1 0.30.0",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "reth-rpc-traits"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8933,6 +9011,15 @@ name = "reth-zstd-compressors"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c12fafa33d2f420a9d39249a3e0357b1928d09429f30758b85280409092873b2"
+dependencies = [
+ "zstd",
+]
+
+[[package]]
+name = "reth-zstd-compressors"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc0e86cf594718932d42cebce1fa48292fb7b92721f7c914631add1ca970e814"
 dependencies = [
  "zstd",
 ]

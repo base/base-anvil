@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use super::TempoOpts;
+use super::{Eip8130Opts, TempoOpts};
 use crate::utils::{parse_ether_value, parse_json};
 use alloy_eips::{eip2930::AccessList, eip7702::SignedAuthorization};
 use alloy_primitives::{Address, U64, U256, hex};
@@ -108,6 +108,9 @@ pub struct TransactionOpts {
 
     #[command(flatten)]
     pub tempo: TempoOpts,
+
+    #[command(flatten)]
+    pub eip8130: Eip8130Opts,
 }
 
 #[cfg(test)]

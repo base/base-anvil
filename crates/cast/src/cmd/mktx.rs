@@ -99,6 +99,32 @@ impl MakeTxArgs {
 
         let provider = get_provider(&config)?;
 
+        // EIP-8130 (type 0x79) transactions are built, signed, and encoded directly (alloy's
+        // `EthereumWallet` doesn't understand the type)
+        if tx.eip8130.eip8130 {
+            if raw_unsigned {
+                eyre::bail!("--raw-unsigned is not supported for EIP-8130 transactions yet.");
+            }
+            if ethsign {
+                eyre::bail!("--ethsign is not supported for EIP-8130 transactions.");
+            }
+            if code.is_some() {
+                eyre::bail!("EIP-8130 transactions can't be CREATE transactions.");
+            }
+
+            let signer = eth.wallet.signer().await?;
+            let from = signer.address();
+            tx::validate_from_address(eth.wallet.from, from)?;
+
+            let raw_tx = crate::eip8130::build_raw_transaction(
+                &provider, &signer, &tx, &config, to, sig, args,
+            )
+            .await?;
+
+            sh_println!("0x{}", hex::encode(&raw_tx))?;
+            return Ok(());
+        }
+
         let tx_builder = CastTxBuilder::new(&provider, tx.clone(), &config)
             .await?
             .with_to(to)

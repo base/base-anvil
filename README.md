@@ -38,6 +38,7 @@ base-foundryup
 This adds `base-foundryup` and the namespaced `base-forge`/`base-cast`/`base-anvil`/`base-chisel` commands, which enable Base precompiles by default.
 
 - **Test your Base app with base-anvil:** [`docs/base.md`](./docs/base.md)
+- **Send EIP-8130 (account abstraction) transactions with cast:** [`docs/eip8130.md`](./docs/eip8130.md)
 - **Release model and the `base/base` pin (maintainers):** [`RELEASES.md`](./RELEASES.md)
 
 Everything below is inherited from upstream Foundry and works unchanged; only the Base additions above are specific to this fork.
