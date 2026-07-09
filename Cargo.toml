@@ -443,7 +443,7 @@ tempo-primitives = { git = "https://github.com/tempoxyz/tempo", tag = "tempo-pri
 
 # EIP-8130 (account abstraction) consensus types. Pinned to a base/base commit
 # that contains the `eip8130` module. Used by `cast` to build/sign EIP-8130 transactions.
-base-common-consensus = { git = "https://github.com/base/base", rev = "a70d193532171f8ad1299d1c80f46bc6625789aa", default-features = false, features = ["std", "serde", "k256"] }
+base-common-consensus = { git = "https://github.com/base/base.git", rev = "a70d193532171f8ad1299d1c80f46bc6625789aa", default-features = false, features = ["std", "serde", "k256"] }
 
 ## Pinned dependencies. Enabled for the workspace in crates/test-utils.
 

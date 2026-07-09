@@ -2180,7 +2180,7 @@ dependencies = [
 [[package]]
 name = "base-common-consensus"
 version = "0.0.0"
-source = "git+https://github.com/base/base?rev=a70d193532171f8ad1299d1c80f46bc6625789aa#a70d193532171f8ad1299d1c80f46bc6625789aa"
+source = "git+https://github.com/base/base.git?rev=a70d193532171f8ad1299d1c80f46bc6625789aa#a70d193532171f8ad1299d1c80f46bc6625789aa"
 dependencies = [
  "alloy-consensus",
  "alloy-eips 2.0.5",
