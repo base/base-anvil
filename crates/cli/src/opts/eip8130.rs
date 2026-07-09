@@ -1,7 +1,7 @@
 use alloy_primitives::{Bytes, U256};
 use clap::Parser;
 
-/// CLI options for EIP-8130 (account abstraction, transaction type `0x7B`) transactions.
+/// CLI options for EIP-8130 (account abstraction, transaction type `0x79`) transactions.
 ///
 /// EIP-8130 replaces the single scalar nonce with a 2D `(nonce_key, nonce_sequence)`
 /// nonce, adds an expiry, opaque metadata and native call batching. The protocol-level
@@ -12,9 +12,9 @@ use clap::Parser;
 #[derive(Clone, Debug, Default, Parser)]
 #[command(next_help_heading = "EIP-8130 (account abstraction)")]
 pub struct Eip8130Opts {
-    /// Send an EIP-8130 (account abstraction, type `0x7B`) transaction.
+    /// Send an EIP-8130 (account abstraction, type `0x79`) transaction.
     ///
-    /// Selects the `0x7B` transaction type. Incompatible with `--legacy`, `--blob`,
+    /// Selects the `0x79` transaction type. Incompatible with `--legacy`, `--blob`,
     /// `--auth` and `--create`.
     #[arg(
         long = "8130",
@@ -45,7 +45,7 @@ pub struct Eip8130Opts {
     pub expiry: Option<u64>,
 
     /// EIP-8130 opaque metadata bytes (hex). Committed to by the signature but otherwise
-    /// uninterpreted by the protocol.
+    /// uninterpreted by the protocol
     #[arg(long = "metadata", requires = "eip8130", value_name = "HEX")]
     pub metadata: Option<Bytes>,
 
