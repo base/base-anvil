@@ -10,14 +10,13 @@ use alloy_chains::{
     NamedChain::{Chiado, Gnosis, Moonbase, Moonbeam, MoonbeamDev, Moonriver, Rsk, RskTestnet},
 };
 use alloy_eips::eip1559::BaseFeeParams;
-use alloy_evm::precompiles::{DynPrecompile, PrecompilesMap};
+use alloy_evm::precompiles::PrecompilesMap;
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use alloy_primitives::{Address, U256, address, keccak256, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationFeature, ActivationRegistry, ActivationRegistryStorage, B20AssetPrecompile,
-    B20Factory, B20FactoryStorage, B20StablecoinPrecompile, B20Variant, PolicyRegistryPrecompile,
-    PolicyRegistryStorage,
+    ActivationFeature, ActivationRegistry, ActivationRegistryStorage, B20Factory,
+    B20FactoryStorage, BerylLookup, PolicyRegistryPrecompile, PolicyRegistryStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -45,21 +44,6 @@ const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] =
 /// activation admin is a deployed account.
 const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
     address!("0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc");
-
-/// Combined B-20 prefix-dispatch lookup for all token variants.
-///
-/// Replicates the private `b20_token_lookup` in
-/// `base/base/crates/common/precompiles/src/provider.rs`. A single named
-/// function is required because `set_precompile_lookup` takes a
-/// function pointer (not a closure) AND replaces rather than chains
-/// successive lookups, so we must dispatch all B-20 variants in one
-/// match.
-fn b20_token_lookup(address: &Address) -> Option<DynPrecompile> {
-    match B20Variant::from_address(*address)? {
-        B20Variant::Stablecoin => Some(B20StablecoinPrecompile::create_precompile(*address)),
-        B20Variant::Asset => Some(B20AssetPrecompile::create_precompile(*address)),
-    }
-}
 
 pub mod celo;
 
@@ -176,13 +160,14 @@ impl NetworkConfigs {
         if self.base {
             // Mirrors `BasePrecompiles::install` for the Beryl upgrade in
             // base/base/crates/common/precompiles/src/provider.rs. Three
-            // singleton precompiles plus a single combined B-20 prefix
-            // dispatcher.
-            // `set_precompile_lookup` replaces rather than chains, so the
-            // combined `b20_token_lookup` covers all variants in one shot.
+            // singleton precompiles plus the versioned B-20 prefix dispatcher.
+            // `BerylLookup::install` owns the dispatcher and threads the Base
+            // upgrade so each B-20 token resolves its logic version per-call
+            // (e.g. Stablecoin V1 at Beryl). Pinned to Beryl until `--base-fork`
+            // (BOP-428) makes the fork selectable at runtime.
             let admin = Some(self.base_activation_admin());
             B20Factory::install(precompiles);
-            precompiles.set_precompile_lookup(b20_token_lookup);
+            BerylLookup::install(precompiles, BaseUpgrade::Beryl);
             PolicyRegistryPrecompile::install(precompiles);
             ActivationRegistry::install(precompiles, admin);
         }
@@ -216,15 +201,6 @@ impl NetworkConfigs {
                 .insert("BaseActivationRegistry".to_string(), ActivationRegistryStorage::ADDRESS);
         }
         precompiles
-    }
-
-    /// Suppress the [`BaseUpgrade`] dead-code lint until additional code paths
-    /// consume the upgrade discriminator (e.g. to gate older Base hardforks
-    /// out of the B-20 precompile install). Kept as a hook because every
-    /// `BasePrecompiles::new_with_spec` call site in base/base takes an upgrade.
-    #[doc(hidden)]
-    pub fn _base_upgrade_hint() -> BaseUpgrade {
-        BaseUpgrade::Beryl
     }
 
     /// Returns the static list of Base singleton precompile addresses that the

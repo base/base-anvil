@@ -2162,8 +2162,8 @@ dependencies = [
 
 [[package]]
 name = "base-common-chains"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=401ffe4d60f3d0e9c34168c865521a3b186339df#401ffe4d60f3d0e9c34168c865521a3b186339df"
 dependencies = [
  "alloy-chains",
  "alloy-eips 2.0.5",
@@ -2173,14 +2173,13 @@ dependencies = [
  "auto_impl",
  "base-common-genesis",
  "revm 40.0.3",
- "serde",
  "spin",
 ]
 
 [[package]]
 name = "base-common-genesis"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=401ffe4d60f3d0e9c34168c865521a3b186339df#401ffe4d60f3d0e9c34168c865521a3b186339df"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -2190,19 +2189,21 @@ dependencies = [
  "alloy-sol-types",
  "derive_more",
  "serde",
+ "spin",
  "thiserror 2.0.18",
  "tracing",
 ]
 
 [[package]]
 name = "base-common-precompiles"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=401ffe4d60f3d0e9c34168c865521a3b186339df#401ffe4d60f3d0e9c34168c865521a3b186339df"
 dependencies = [
  "alloy-evm",
  "alloy-primitives",
  "alloy-sol-types",
  "base-common-chains",
+ "base-common-genesis",
  "base-precompile-macros",
  "base-precompile-storage",
  "revm 40.0.3",
@@ -2210,8 +2211,8 @@ dependencies = [
 
 [[package]]
 name = "base-precompile-macros"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=401ffe4d60f3d0e9c34168c865521a3b186339df#401ffe4d60f3d0e9c34168c865521a3b186339df"
 dependencies = [
  "alloy-primitives",
  "proc-macro2",
@@ -2221,8 +2222,8 @@ dependencies = [
 
 [[package]]
 name = "base-precompile-storage"
-version = "1.1.0"
-source = "git+https://github.com/base/base.git?rev=a3c3011b16dae73aaea455ec0a5ff614e65b7d0a#a3c3011b16dae73aaea455ec0a5ff614e65b7d0a"
+version = "0.0.0"
+source = "git+https://github.com/base/base.git?rev=401ffe4d60f3d0e9c34168c865521a3b186339df#401ffe4d60f3d0e9c34168c865521a3b186339df"
 dependencies = [
  "alloy-evm",
  "alloy-primitives",
