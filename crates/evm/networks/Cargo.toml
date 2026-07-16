@@ -29,8 +29,8 @@ alloy-primitives = { workspace = true, features = [
 # github.com/base/base; bump via ./script/bump-base.sh. To iterate against a
 # local base/base checkout instead, uncomment the [patch] block at the bottom
 # of the workspace root Cargo.toml.
-base-common-precompiles = { git = "https://github.com/base/base.git", rev = "401ffe4d60f3d0e9c34168c865521a3b186339df" }
-base-common-chains = { git = "https://github.com/base/base.git", rev = "401ffe4d60f3d0e9c34168c865521a3b186339df" }
+base-common-precompiles = { git = "https://github.com/base/base.git", rev = "cc8ee3860973c6a98823c63324e95ad9daf63e1b" }
+base-common-chains = { git = "https://github.com/base/base.git", rev = "cc8ee3860973c6a98823c63324e95ad9daf63e1b" }
 
 revm = { workspace = true, features = [
     "std",
