@@ -16,7 +16,8 @@ use alloy_primitives::{Address, U256, address, keccak256, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
     ActivationFeature, ActivationRegistry, ActivationRegistryStorage, B20Factory,
-    B20FactoryStorage, BerylLookup, PolicyRegistryPrecompile, PolicyRegistryStorage,
+    B20FactoryStorage, BerylLookup, NoopPrecompileCallObserver, PolicyRegistryPrecompile,
+    PolicyRegistryStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -165,10 +166,23 @@ impl NetworkConfigs {
             // upgrade so each B-20 token resolves its logic version per-call
             // (e.g. Stablecoin V1 at Beryl). Pinned to Beryl until `--base-fork`
             // (BOP-428) makes the fork selectable at runtime.
+            //
+            // The factory/policy singletons use `install_with_observer` with a
+            // no-op observer, matching provider.rs; base/base dropped the plain
+            // `install` shims in favour of the observed variants. Metrics
+            // observation is scoped to the B-20 token call path, which anvil
+            // does not wire up, so a no-op observer is correct here.
             let admin = Some(self.base_activation_admin());
-            B20Factory::install(precompiles);
+            B20Factory::install_with_observer(
+                precompiles,
+                BaseUpgrade::Beryl,
+                NoopPrecompileCallObserver,
+            );
             BerylLookup::install(precompiles, BaseUpgrade::Beryl);
-            PolicyRegistryPrecompile::install(precompiles);
+            PolicyRegistryPrecompile::install_with_observer(
+                precompiles,
+                NoopPrecompileCallObserver,
+            );
             ActivationRegistry::install(precompiles, admin);
         }
     }
