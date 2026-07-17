@@ -10,14 +10,13 @@ use alloy_chains::{
     NamedChain::{Chiado, Gnosis, Moonbase, Moonbeam, MoonbeamDev, Moonriver, Rsk, RskTestnet},
 };
 use alloy_eips::eip1559::BaseFeeParams;
-use alloy_evm::precompiles::{DynPrecompile, PrecompilesMap};
+use alloy_evm::precompiles::PrecompilesMap;
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use alloy_primitives::{Address, address, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationRegistry, ActivationRegistryStorage, B20Factory, B20FactoryStorage,
-    B20AssetPrecompile, B20StablecoinPrecompile, B20Variant,
-    PolicyRegistryPrecompile, PolicyRegistryStorage,
+    ActivationRegistry, ActivationRegistryStorage, B20Factory, B20FactoryStorage, BerylLookup,
+    NoopPrecompileCallObserver, PolicyRegistryPrecompile, PolicyRegistryStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -46,20 +45,9 @@ const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] =
 const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
     address!("0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc");
 
-/// Combined B-20 prefix-dispatch lookup for all token variants.
-///
-/// Replicates the private `b20_token_lookup` in
-/// `base/base/crates/common/precompiles/src/provider.rs`. A single named
-/// function is required because `set_precompile_lookup` takes a
-/// function pointer (not a closure) AND replaces rather than chains
-/// successive lookups, so we must dispatch all B-20 variants in one
-/// match.
-fn b20_token_lookup(address: &Address) -> Option<DynPrecompile> {
-    match B20Variant::from_address(*address)? {
-        B20Variant::Stablecoin => Some(B20StablecoinPrecompile::create_precompile(*address)),
-        B20Variant::Asset => Some(B20AssetPrecompile::create_precompile(*address)),
-    }
-}
+/// Dev-chain Base upgrade used when `--base` installs Beryl precompiles.
+/// Matches `BasePrecompiles::new_with_spec(BaseUpgrade::Beryl)` call sites in base/base.
+const BASE_DEV_UPGRADE: BaseUpgrade = BaseUpgrade::Beryl;
 
 pub mod celo;
 
@@ -174,16 +162,19 @@ impl NetworkConfigs {
             });
         }
         if self.base {
-            // Mirrors `BasePrecompiles::install` for the Beryl upgrade in
-            // base/base/crates/common/precompiles/src/provider.rs. Three
-            // singleton precompiles plus a single combined B-20 prefix
-            // dispatcher.
-            // `set_precompile_lookup` replaces rather than chains, so the
-            // combined `b20_token_lookup` covers all variants in one shot.
+            // Mirrors `BasePrecompiles::install_with_observer` for Beryl in
+            // base/base/crates/common/precompiles/src/provider.rs. Factory +
+            // registries as singletons, plus `BerylLookup` for the B-20
+            // prefix dispatcher. Anvil does not record precompile metrics, so
+            // the factory uses a noop observer.
             let admin = Some(self.base_activation_admin());
-            B20Factory::install(precompiles);
-            precompiles.set_precompile_lookup(b20_token_lookup);
-            PolicyRegistryPrecompile::install(precompiles);
+            B20Factory::install_with_observer(
+                precompiles,
+                BASE_DEV_UPGRADE,
+                NoopPrecompileCallObserver,
+            );
+            BerylLookup::install(precompiles, BASE_DEV_UPGRADE);
+            PolicyRegistryPrecompile::install(precompiles, BASE_DEV_UPGRADE);
             ActivationRegistry::install(precompiles, admin);
         }
     }
@@ -216,15 +207,6 @@ impl NetworkConfigs {
                 .insert("BaseActivationRegistry".to_string(), ActivationRegistryStorage::ADDRESS);
         }
         precompiles
-    }
-
-    /// Suppress the [`BaseUpgrade`] dead-code lint until additional code paths
-    /// consume the upgrade discriminator (e.g. to gate older Base hardforks
-    /// out of the B-20 precompile install). Kept as a hook because every
-    /// `BasePrecompiles::new_with_spec` call site in base/base takes an upgrade.
-    #[doc(hidden)]
-    pub fn _base_upgrade_hint() -> BaseUpgrade {
-        BaseUpgrade::Beryl
     }
 
     /// Returns the static list of Base singleton precompile addresses that the
