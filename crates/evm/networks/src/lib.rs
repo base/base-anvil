@@ -16,7 +16,8 @@ use alloy_primitives::{Address, U256, address, keccak256, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
     ActivationFeature, ActivationRegistry, ActivationRegistryStorage, B20Factory,
-    B20FactoryStorage, BerylLookup, PolicyRegistryPrecompile, PolicyRegistryStorage,
+    B20FactoryStorage, BerylLookup, NoopPrecompileCallObserver, PolicyRegistryPrecompile,
+    PolicyRegistryStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -158,17 +159,21 @@ impl NetworkConfigs {
             });
         }
         if self.base {
-            // Mirrors `BasePrecompiles::install` for the Beryl upgrade in
-            // base/base/crates/common/precompiles/src/provider.rs. Three
-            // singleton precompiles plus the versioned B-20 prefix dispatcher.
-            // `BerylLookup::install` owns the dispatcher and threads the Base
-            // upgrade so each B-20 token resolves its logic version per-call
-            // (e.g. Stablecoin V1 at Beryl). Pinned to Beryl until `--base-fork`
-            // (BOP-428) makes the fork selectable at runtime.
+            // Mirrors `BasePrecompiles::install_with_observer` for the Beryl
+            // upgrade in base/base/crates/common/precompiles/src/provider.rs.
+            // Three singleton precompiles plus the versioned B-20 prefix
+            // dispatcher. `BerylLookup::install` owns the dispatcher and
+            // threads the Base upgrade so each B-20 token resolves its logic
+            // version per-call (e.g. Stablecoin V1 at Beryl). Pinned to Beryl
+            // until `--base-fork` (BOP-428) makes the fork selectable at runtime.
+            //
+            // Factory/policy take a no-op observer: metrics observation is
+            // scoped to the B-20 token call path, which anvil does not wire up.
             let admin = Some(self.base_activation_admin());
-            B20Factory::install(precompiles);
-            BerylLookup::install(precompiles, BaseUpgrade::Beryl);
-            PolicyRegistryPrecompile::install(precompiles);
+            let upgrade = BaseUpgrade::Beryl;
+            B20Factory::install_with_observer(precompiles, upgrade, NoopPrecompileCallObserver);
+            BerylLookup::install(precompiles, upgrade);
+            PolicyRegistryPrecompile::install(precompiles, upgrade);
             ActivationRegistry::install(precompiles, admin);
         }
     }
