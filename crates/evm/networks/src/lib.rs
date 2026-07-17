@@ -12,11 +12,12 @@ use alloy_chains::{
 use alloy_eips::eip1559::BaseFeeParams;
 use alloy_evm::precompiles::PrecompilesMap;
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
-use alloy_primitives::{Address, address, map::AddressHashMap};
+use alloy_primitives::{Address, U256, address, keccak256, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationRegistry, ActivationRegistryStorage, B20Factory, B20FactoryStorage, BerylLookup,
-    NoopPrecompileCallObserver, PolicyRegistryPrecompile, PolicyRegistryStorage,
+    ActivationFeature, ActivationRegistry, ActivationRegistryStorage, B20Factory,
+    B20FactoryStorage, BerylLookup, NoopPrecompileCallObserver, PolicyRegistryPrecompile,
+    PolicyRegistryStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -44,10 +45,6 @@ const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] =
 /// activation admin is a deployed account.
 const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
     address!("0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc");
-
-/// Dev-chain Base upgrade used when `--base` installs Beryl precompiles.
-/// Matches `BasePrecompiles::new_with_spec(BaseUpgrade::Beryl)` call sites in base/base.
-const BASE_DEV_UPGRADE: BaseUpgrade = BaseUpgrade::Beryl;
 
 pub mod celo;
 
@@ -135,8 +132,8 @@ impl NetworkConfigs {
     }
 
     /// Returns the activation admin address that will be configured on the
-    /// ActivationRegistry precompile when `--base` is set. Falls back to
-    /// [`DEFAULT_BASE_ACTIVATION_ADMIN`] when no override is provided.
+    /// ActivationRegistry precompile when `--base` is set. Falls back to the
+    /// default Base activation admin when no override is provided.
     pub fn base_activation_admin(&self) -> Address {
         self.base_activation_admin.unwrap_or(DEFAULT_BASE_ACTIVATION_ADMIN)
     }
@@ -162,19 +159,25 @@ impl NetworkConfigs {
             });
         }
         if self.base {
-            // Mirrors `BasePrecompiles::install_with_observer` for Beryl in
-            // base/base/crates/common/precompiles/src/provider.rs. Factory +
-            // registries as singletons, plus `BerylLookup` for the B-20
-            // prefix dispatcher. Anvil does not record precompile metrics, so
-            // the factory uses a noop observer.
+            // Mirrors `BasePrecompiles::install_with_observer` for the Beryl
+            // upgrade in base/base/crates/common/precompiles/src/provider.rs.
+            // Three singleton precompiles plus the versioned B-20 prefix
+            // dispatcher. `BerylLookup::install` owns the dispatcher and
+            // threads the Base upgrade so each B-20 token resolves its logic
+            // version per-call (e.g. Stablecoin V1 at Beryl). Pinned to Beryl
+            // until `--base-fork` (BOP-428) makes the fork selectable at runtime.
+            //
+            // Factory/policy use `install_with_observer` with a no-op observer:
+            // base/base dropped the plain `install` shims in favour of the
+            // observed variants. Metrics observation is scoped to the B-20
+            // token call path, which anvil does not wire up.
             let admin = Some(self.base_activation_admin());
-            B20Factory::install_with_observer(
+            B20Factory::install_with_observer(precompiles, NoopPrecompileCallObserver);
+            BerylLookup::install(precompiles, BaseUpgrade::Beryl);
+            PolicyRegistryPrecompile::install_with_observer(
                 precompiles,
-                BASE_DEV_UPGRADE,
                 NoopPrecompileCallObserver,
             );
-            BerylLookup::install(precompiles, BASE_DEV_UPGRADE);
-            PolicyRegistryPrecompile::install(precompiles, BASE_DEV_UPGRADE);
             ActivationRegistry::install(precompiles, admin);
         }
     }
@@ -210,10 +213,48 @@ impl NetworkConfigs {
     }
 
     /// Returns the static list of Base singleton precompile addresses that the
-    /// executor pre-warms with sentinel bytecode. See the docstring on
-    /// [`BASE_PRECOMPILE_SENTINEL_ADDRESSES`] for the scope and why B-20 tokens
-    /// are intentionally excluded.
+    /// executor pre-warms with sentinel bytecode. B-20 token addresses are
+    /// intentionally excluded because they are handled by the shared prefix
+    /// dispatcher instead of individual singleton sentinels.
     pub fn base_precompile_sentinel_addresses(&self) -> &'static [Address] {
         if self.base { BASE_PRECOMPILE_SENTINEL_ADDRESSES } else { &[] }
+    }
+
+    /// `(address, slot, value)` writes that mark Base's activation-gated
+    /// features active, so local `forge test --base` (no fork) matches a live
+    /// Beryl+ chain instead of reverting `FeatureNotActivated`. Empty unless
+    /// `--base` is set.
+    ///
+    /// Slot derivation MUST stay in lockstep with the `features` mapping in
+    /// base/base `precompiles/src/activation/storage.rs`. That mapping lives at
+    /// the ERC-7201 root of namespace `"base.activation_registry"` (base/base's
+    /// `activation_registry_namespace_matches_base_std_root` test pins this root
+    /// to `0x43ee..cce00`), and each feature flag sits at the Solidity mapping
+    /// slot `keccak256(feature_id ‖ root)`.
+    pub fn base_activation_seeds(&self) -> Vec<(Address, U256, U256)> {
+        if !self.base {
+            return Vec::new();
+        }
+        // ERC-7201 root: keccak256(abi.encode(uint256(keccak256(id)) - 1)) & ~0xff.
+        let id_hash = U256::from_be_bytes(keccak256("base.activation_registry").0);
+        let root = (U256::from_be_bytes(keccak256((id_hash - U256::ONE).to_be_bytes::<32>()).0)
+            & !U256::from(0xffu64))
+        .to_be_bytes::<32>();
+        [
+            ActivationFeature::B20Asset,
+            ActivationFeature::B20Stablecoin,
+            ActivationFeature::PolicyRegistry,
+        ]
+        .into_iter()
+        .map(|feature| {
+            // Solidity mapping slot: keccak256(lpad32(key) ‖ base_slot); key and root are 32-byte
+            // words.
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(feature.id().as_slice());
+            buf[32..].copy_from_slice(&root);
+            let slot = U256::from_be_bytes(keccak256(buf).0);
+            (ActivationRegistryStorage::ADDRESS, slot, U256::ONE)
+        })
+        .collect()
     }
 }

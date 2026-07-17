@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -7,10 +8,12 @@ use crate::{
     Env, InspectorExt,
     backend::DatabaseExt,
     constants::{DEFAULT_CREATE2_DEPLOYER_CODEHASH, DEFAULT_CREATE2_DEPLOYER_RUNTIME_CODE},
+    env::ContextExt,
 };
 use alloy_consensus::constants::KECCAK_EMPTY;
 use alloy_evm::{Evm, EvmEnv, eth::EthEvmContext, precompiles::PrecompilesMap};
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_genesis::GenesisAccount;
+use alloy_primitives::{Address, B256, Bytes, U256};
 use foundry_fork_db::DatabaseError;
 use revm::{
     Context, Journal,
@@ -65,6 +68,7 @@ pub fn new_evm_with_inspector<'db, I: InspectorExt>(
     };
 
     evm.inspector().get_networks().inject_precompiles(evm.precompiles_mut());
+    seed_base_activation_features(&mut evm);
     evm
 }
 
@@ -84,7 +88,33 @@ pub fn new_evm_with_existing_context<'a>(
     };
 
     evm.inspector().get_networks().inject_precompiles(evm.precompiles_mut());
+    seed_base_activation_features(&mut evm);
     evm
+}
+
+/// Seeds Base's activation-gated features as active when `--base` is set, so local
+/// execution with no `--fork-url` matches a live Beryl-or-later Base chain instead
+/// of reverting `FeatureNotActivated`. Applied via the same `load_allocs` genesis
+/// path foundry uses for pre-test state setup, so the writes land in the journal
+/// and survive into transaction execution. No-op unless `--base` is set.
+fn seed_base_activation_features<I: InspectorExt>(evm: &mut FoundryEvm<'_, I>) {
+    let seeds = evm.inspector().get_networks().base_activation_seeds();
+    let Some((target, _, _)) = seeds.first().copied() else { return };
+    let storage: BTreeMap<B256, B256> = seeds
+        .iter()
+        .map(|(_, slot, value)| {
+            (B256::from(slot.to_be_bytes::<32>()), B256::from(value.to_be_bytes::<32>()))
+        })
+        .collect();
+    let mut allocs = BTreeMap::new();
+    allocs.insert(target, GenesisAccount { storage: Some(storage), ..Default::default() });
+    let (db, journal, _) = evm.inner.ctx.as_db_env_and_journal();
+    // In fork mode the live chain already carries real activation state; seeding
+    // would clobber it, so only seed for local (non-fork) execution.
+    if (*db).is_forked_mode() {
+        return;
+    }
+    let _ = (*db).load_allocs(&allocs, journal);
 }
 
 /// Get the precompiles for the given spec.
@@ -119,6 +149,7 @@ fn get_create2_factory_call_inputs(
         gas_limit: inputs.gas_limit(),
         reservoir: 0,
         is_static: false,
+        charged_new_account_state_gas: false,
         return_memory_offset: 0..0,
     }
 }
@@ -144,6 +175,7 @@ impl<'db, I: InspectorExt> FoundryEvm<'db, I> {
         frame: FrameInput,
     ) -> Result<FrameResult, EVMError<DatabaseError>> {
         let mut handler = FoundryHandler::<I>::default();
+        let original_reservoir = frame.reservoir();
 
         // Create first frame
         let memory =
@@ -154,7 +186,7 @@ impl<'db, I: InspectorExt> FoundryEvm<'db, I> {
         let mut frame_result = handler.inspect_run_exec_loop(&mut self.inner, first_frame_input)?;
 
         // Handle last frame result
-        handler.last_frame_result(&mut self.inner, &mut frame_result)?;
+        handler.last_frame_result(&mut self.inner, original_reservoir, &mut frame_result)?;
 
         Ok(frame_result)
     }
@@ -328,6 +360,7 @@ impl<'db, I: InspectorExt> FoundryHandler<'db, I> {
                         memory_offset: 0..0,
                         was_precompile_called: false,
                         precompile_call_logs: vec![],
+                        charged_new_account_state_gas: false,
                     })));
                 } else if code_hash != DEFAULT_CREATE2_DEPLOYER_CODEHASH {
                     return Ok(Some(FrameResult::Call(CallOutcome {
@@ -339,6 +372,7 @@ impl<'db, I: InspectorExt> FoundryHandler<'db, I> {
                         memory_offset: 0..0,
                         was_precompile_called: false,
                         precompile_call_logs: vec![],
+                        charged_new_account_state_gas: false,
                     })));
                 }
 

@@ -1875,12 +1875,11 @@ async fn test_config_with_osaka_hardfork_with_precompile_factory() {
                 address!("0x0000000000000000000000000000000000000071"),
                 alloy_evm::precompiles::DynPrecompile::from(
                     |input: alloy_evm::precompiles::PrecompileInput<'_>| {
-                        Ok(revm::precompile::PrecompileOutput {
-                            bytes: Bytes::copy_from_slice(input.data),
-                            gas_used: 0,
-                            gas_refunded: 0,
-                            reverted: false,
-                        })
+                        Ok(revm::precompile::PrecompileOutput::new(
+                            0,
+                            Bytes::copy_from_slice(input.data),
+                            0,
+                        ))
                     },
                 ),
             )]

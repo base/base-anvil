@@ -34,7 +34,7 @@ jobs:
       - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
       - name: Build documentation
-        run: cargo doc --workspace --all-features --no-deps --document-private-items
+        run: cargo +nightly doc --workspace --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: --cfg docsrs -D warnings --show-type-layout --generate-link-to-definition --enable-index-page -Zunstable-options
       - name: Setup Pages
@@ -42,7 +42,7 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Upload artifact
         if: github.ref_name == 'master' && github.event_name == 'push'
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ./target/doc
 

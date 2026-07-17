@@ -445,6 +445,27 @@ impl Backend {
         // apply the genesis.json alloc
         self.genesis.apply_genesis_json_alloc(db)?;
 
+        // Seed Base's activation-gated features (B20Asset, B20Stablecoin,
+        // PolicyRegistry) as active so a standalone `anvil --base` node matches a
+        // live Beryl-or-later Base chain instead of reverting `FeatureNotActivated`.
+        // This mirrors the local-execution seeding `forge --base` applies. Skipped
+        // in fork mode, where the live chain already carries real activation state
+        // that seeding would clobber. No-op unless `--base` is set
+        // (`base_activation_seeds` returns empty otherwise).
+        if self.fork.read().is_none() {
+            let seeds = self.env.read().networks.base_activation_seeds();
+            if !seeds.is_empty() {
+                let mut db = self.db.write().await;
+                for (address, slot, value) in seeds {
+                    db.set_storage_at(
+                        address,
+                        B256::from(slot.to_be_bytes::<32>()),
+                        B256::from(value.to_be_bytes::<32>()),
+                    )?;
+                }
+            }
+        }
+
         trace!(target: "backend", "set genesis balances");
 
         Ok(())

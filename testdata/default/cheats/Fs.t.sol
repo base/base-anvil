@@ -141,6 +141,11 @@ contract FsTest is Test {
 
     function testReadDir() public {
         string memory path = "fixtures/Dir";
+        string memory scratchPath = "fixtures/Dir/remove_dir";
+
+        if (vm.exists(scratchPath)) {
+            vm.removeDir(scratchPath, true);
+        }
 
         {
             Vm.DirEntry[] memory entries = vm.readDir(path);
@@ -177,6 +182,10 @@ contract FsTest is Test {
     function testCreateRemoveDir() public {
         string memory path = "fixtures/Dir/remove_dir";
         string memory child = string.concat(path, "/child");
+
+        if (vm.exists(path)) {
+            vm.removeDir(path, true);
+        }
 
         vm.createDir(path, false);
         assertEq(vm.fsMetadata(path).isDir, true);

@@ -1,0 +1,5 @@
+[profile.default]
+test = "test"
+# Deliberately dependency-free so the smoke test stays hermetic: no forge-std,
+# no `forge install`, no submodules, no network. The proof test inlines the one
+# interface it needs.

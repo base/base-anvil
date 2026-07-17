@@ -14,12 +14,33 @@
 [tg-support-url]: https://t.me/foundry_support
 
 **[Install](https://getfoundry.sh/getting-started/installation)**
+| [Testing against Base](./docs/base.md)
 | [Docs][foundry-docs]
 | [Developer Guidelines](./docs/dev/README.md)
 | [Contributing](./CONTRIBUTING.md)
 | [Crate Docs](https://foundry-rs.github.io/foundry)
 
 </div>
+
+---
+
+## base-anvil: Base's Foundry build
+
+base-anvil is a fork of Foundry that teaches `forge`, `cast`, `anvil`, and `chisel` about Base's native precompiles, such as the B20 token factory, B20 tokens, the PolicyRegistry, and the ActivationRegistry. Stock Foundry can't reach them and aborts with `call to non-contract address`; base-anvil registers them into its EVM so you can build and test Base apps locally, with no live network.
+
+Install alongside your existing Foundry (it never overwrites stock `foundryup` or your `forge`/`cast`/`anvil`/`chisel`):
+
+```bash
+curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
+base-foundryup
+```
+
+This adds `base-foundryup` and the namespaced `base-forge`/`base-cast`/`base-anvil`/`base-chisel` commands, which enable Base precompiles by default.
+
+- **Test your Base app with base-anvil:** [`docs/base.md`](./docs/base.md)
+- **Release model and the `base/base` pin (maintainers):** [`RELEASES.md`](./RELEASES.md)
+
+Everything below is inherited from upstream Foundry and works unchanged; only the Base additions above are specific to this fork.
 
 ---
 
@@ -64,6 +85,8 @@ Foundry consists of:
   - **Optimized CI**: Accelerate builds, run tests and execute scripts using [Foundry's GitHub action][foundry-gha].
 
 ## Installation
+
+> **Installing the Base build?** Use `base-foundryup`, not the stock `foundryup` shown below. See [base-anvil: Base's Foundry build](#base-anvil-bases-foundry-build) above. The steps below install upstream Foundry.
 
 Getting started is very easy:
 

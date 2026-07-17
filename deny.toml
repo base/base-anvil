@@ -9,6 +9,14 @@ ignore = [
     "RUSTSEC-2024-0436",
     # https://rustsec.org/advisories/RUSTSEC-2025-0141 bincode is unmaintained
     "RUSTSEC-2025-0141",
+    # proc-macro-error2 is currently still pulled in through alloy's proc-macro stack.
+    "RUSTSEC-2026-0173",
+    # quick-xml <0.41 DoS advisories (quadratic dup-attr check / unbounded namespace
+    # allocation). Pulled in transitively; foundry's dep tree still pins quick-xml
+    # <0.41, so the fix (>=0.41.0) isn't reachable via `cargo update`. Not exploitable
+    # in normal CLI usage. Remove once the tree reaches quick-xml >=0.41.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]
 
 # This section is considered when running `cargo deny check bans`.
@@ -99,7 +107,9 @@ unknown-git = "deny"
 allow-git = [
     "https://github.com/alloy-rs/alloy",
     "https://github.com/foundry-rs/compilers",
-    "https://github.com/foundry-rs/foundry-fork-db",
+    "https://github.com/foundry-rs/foundry-core",
+    "https://github.com/foundry-rs/op-revm",
+    "https://github.com/foundry-rs/optimism",
     "https://github.com/paradigmxyz/revm-inspectors",
     "https://github.com/paradigmxyz/solar",
     "https://github.com/bluealloy/revm",

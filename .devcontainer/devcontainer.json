@@ -17,7 +17,7 @@
 
   "forwardPorts": [],
 
-  "postCreateCommand": "rustup default stable && rustup update",
+  "postCreateCommand": "rustup toolchain install 1.94.1 && rustup default 1.94.1",
 
   "customizations": {
     "vscode": {

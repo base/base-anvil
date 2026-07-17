@@ -316,7 +316,7 @@ impl From<FoundryTxEnvelope> for FoundryTypedTx {
 mod tests {
     use std::str::FromStr;
 
-    use alloy_primitives::{Bytes, Signature, TxHash, TxKind, U256, b256, hex};
+    use alloy_primitives::{Signature, TxHash, TxKind, U256, b256, hex};
     use alloy_rlp::Decodable;
 
     use super::*;

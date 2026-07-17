@@ -3,17 +3,27 @@ set -eo pipefail
 
 # NOTE: if you make modifications to this script, please increment the version number.
 # WARNING: the SemVer pattern: major.minor.patch must be followed as we use it to determine if the script is up to date.
-FOUNDRYUP_INSTALLER_VERSION="1.5.0"
+FOUNDRYUP_INSTALLER_VERSION="1.8.0"
 
 BASE_DIR=${XDG_CONFIG_HOME:-$HOME}
 FOUNDRY_DIR=${FOUNDRY_DIR:-"$BASE_DIR/.foundry"}
 FOUNDRY_VERSIONS_DIR="$FOUNDRY_DIR/versions"
 FOUNDRY_BIN_DIR="$FOUNDRY_DIR/bin"
 FOUNDRY_MAN_DIR="$FOUNDRY_DIR/share/man/man1"
-FOUNDRY_BIN_URL="https://raw.githubusercontent.com/foundry-rs/foundry/HEAD/foundryup/foundryup"
+FOUNDRY_BIN_URL="https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/foundryup"
 FOUNDRY_BIN_PATH="$FOUNDRY_BIN_DIR/foundryup"
 FOUNDRYUP_JOBS=""
 FOUNDRYUP_IGNORE_VERIFICATION=false
+
+# When installed/invoked as `base-foundryup`, this script manages ONLY the Base
+# build: it defaults to `--network base` and self-updates the `base-foundryup`
+# slot, so a developer's stock `foundryup` (and stock Foundry) is never touched.
+FOUNDRYUP_SELF_NAME="$(basename "${0:-foundryup}")"
+FOUNDRYUP_DEFAULT_NETWORK=""
+if [ "$FOUNDRYUP_SELF_NAME" = "base-foundryup" ]; then
+  FOUNDRYUP_DEFAULT_NETWORK="base"
+  FOUNDRY_BIN_PATH="$FOUNDRY_BIN_DIR/base-foundryup"
+fi
 
 BINS=(forge cast anvil chisel)
 HASH_NAMES=()
@@ -54,6 +64,11 @@ main() {
         exit 1
     esac; shift
   done
+
+  # base-foundryup defaults to the Base network when no --network is supplied.
+  if [ -z "$FOUNDRYUP_NETWORK" ] && [ -n "$FOUNDRYUP_DEFAULT_NETWORK" ]; then
+    FOUNDRYUP_NETWORK="$FOUNDRYUP_DEFAULT_NETWORK"
+  fi
 
   # Tempo only distributes a subset of the binaries
   if [[ "$FOUNDRYUP_NETWORK" == "tempo" ]]; then
@@ -110,14 +125,22 @@ main() {
   # If Tempo network is set, use the Tempo fork of Foundry
   if [[ "$FOUNDRYUP_NETWORK" == "tempo" ]]; then
     FOUNDRYUP_REPO="tempoxyz/tempo-foundry"
+  elif [[ "$FOUNDRYUP_NETWORK" == "base" ]]; then
+    FOUNDRYUP_REPO="base/base-anvil"
   else
   # Default to Foundry repo
     FOUNDRYUP_REPO=${FOUNDRYUP_REPO:-foundry-rs/foundry}
   fi
 
   # Install by downloading binaries
-  if [[ "$FOUNDRYUP_REPO" == "foundry-rs/foundry" && -z "$FOUNDRYUP_BRANCH" && -z "$FOUNDRYUP_COMMIT" ]]; then
-    FOUNDRYUP_VERSION=${FOUNDRYUP_VERSION:-stable}
+  if [[ ( "$FOUNDRYUP_REPO" == "foundry-rs/foundry" || "$FOUNDRYUP_REPO" == "base/base-anvil" ) && -z "$FOUNDRYUP_BRANCH" && -z "$FOUNDRYUP_COMMIT" ]]; then
+    if [[ "$FOUNDRYUP_NETWORK" == "base" ]]; then
+      # Pin bare `base-foundryup` to the v1.1.0 (Beryl) release.
+      # Rolling builds remain available via `base-foundryup --install nightly`.
+      FOUNDRYUP_VERSION=${FOUNDRYUP_VERSION:-v1.1.0}
+    else
+      FOUNDRYUP_VERSION=${FOUNDRYUP_VERSION:-stable}
+    fi
     FOUNDRYUP_TAG=$FOUNDRYUP_VERSION
 
     # Normalize versions (handle channels, versions without v prefix)
@@ -129,13 +152,21 @@ main() {
       FOUNDRYUP_TAG="${FOUNDRYUP_VERSION}"
     fi
 
+    # The published GitHub release tag to download from. base-anvil and stock
+    # Foundry share channel names (e.g. nightly), so the local install slot is
+    # namespaced below while the release tag stays the bare channel name.
+    RELEASE_TAG="$FOUNDRYUP_TAG"
+    if [[ "$FOUNDRYUP_NETWORK" == "base" ]]; then
+      FOUNDRYUP_TAG="base-${FOUNDRYUP_TAG}"
+    fi
+
     say "installing foundry (version ${FOUNDRYUP_VERSION}, tag ${FOUNDRYUP_TAG})"
 
     # Detect platform and architecture.
     detect_platform_arch
 
     # Compute the URL of the release tarball in the Foundry repository.
-    RELEASE_URL="https://github.com/${FOUNDRYUP_REPO}/releases/download/${FOUNDRYUP_TAG}/"
+    RELEASE_URL="https://github.com/${FOUNDRYUP_REPO}/releases/download/${RELEASE_TAG}/"
     ATTESTATION_URL="${RELEASE_URL}foundry_${FOUNDRYUP_VERSION}_${PLATFORM}_${ARCHITECTURE}.attestation.txt"
     BIN_ARCHIVE_URL="${RELEASE_URL}foundry_${FOUNDRYUP_VERSION}_${PLATFORM}_${ARCHITECTURE}.$EXT"
     MAN_TARBALL_URL="${RELEASE_URL}foundry_man_${FOUNDRYUP_VERSION}.tar.gz"
@@ -534,19 +565,49 @@ use() {
 
     check_bins_in_use
 
+    # Network-specific builds (e.g. --network base) install under a namespaced
+    # command name (base-forge, base-cast, base-anvil, base-chisel) so they sit
+    # alongside a stock Foundry install instead of overwriting forge/cast/anvil/
+    # chisel on the user's PATH.
+    cmd_prefix=""
+    if [[ "$FOUNDRYUP_NETWORK" == "base" ]]; then
+      cmd_prefix="base-"
+    fi
+
     for bin in "${BINS[@]}"; do
-      bin_path="$FOUNDRY_BIN_DIR/$bin"
+      dest_bin="${cmd_prefix}${bin}"
+      bin_path="$FOUNDRY_BIN_DIR/$dest_bin"
+
+      if [ -n "$cmd_prefix" ]; then
+        # Install a thin wrapper that runs the Base build with Base precompiles
+        # enabled by default (FOUNDRY_BASE=true for forge/cast/chisel, --base for
+        # anvil), so `base-forge test` / `base-anvil` just work with no
+        # foundry.toml changes. The real binary stays in the versioned dir.
+        real_bin="$FOUNDRY_VERSION_DIR/$bin"
+        anvil_flag=""
+        [ "$bin" = "anvil" ] && anvil_flag=" --base"
+        cat > "$bin_path" <<WRAP
+#!/usr/bin/env bash
+# Auto-generated by 'foundryup --network base'. Runs the Base build of $bin with
+# Base precompiles enabled by default. Your stock '$bin' is left untouched.
+exec env FOUNDRY_BASE=true "$real_bin"$anvil_flag "\$@"
+WRAP
+        ensure chmod +x "$bin_path"
+        say "use - $dest_bin (Base enabled) -> $real_bin"
+        continue
+      fi
+
       cp "$FOUNDRY_VERSION_DIR/$bin" "$bin_path"
       # Print usage msg
       say "use - $(ensure "$bin_path" -V)"
 
       # Check if the default path of the binary is not in FOUNDRY_BIN_DIR
-      which_path="$(command -v "$bin" || true)"
+      which_path="$(command -v "$dest_bin" || true)"
       if [ -n "$which_path" ] && [ "$which_path" != "$bin_path" ]; then
         warn ""
         cat 1>&2 <<EOF
-There are multiple binaries with the name '$bin' present in your 'PATH'.
-This may be the result of installing '$bin' using another method,
+There are multiple binaries with the name '$dest_bin' present in your 'PATH'.
+This may be the result of installing '$dest_bin' using another method,
 like Cargo or other package managers.
 You may need to run 'rm $which_path' or move '$FOUNDRY_BIN_DIR'
 in your 'PATH' to allow the newly installed version to take precedence!
@@ -554,6 +615,15 @@ in your 'PATH' to allow the newly installed version to take precedence!
 EOF
       fi
     done
+
+    if [ -n "$cmd_prefix" ]; then
+      say ""
+      say "Installed Base commands: ${cmd_prefix}forge ${cmd_prefix}cast ${cmd_prefix}anvil ${cmd_prefix}chisel"
+      say "Base precompiles are ON by default in these commands; your stock"
+      say "forge/cast/anvil/chisel (if any) are left untouched."
+      say "Run Base tests with:          ${cmd_prefix}forge test"
+      say "Start a local Base node with: ${cmd_prefix}anvil"
+    fi
     exit 0
   else
     err "version $FOUNDRYUP_VERSION not installed"

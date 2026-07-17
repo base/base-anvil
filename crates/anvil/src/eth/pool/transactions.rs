@@ -110,10 +110,10 @@ impl PoolTransaction {
 impl fmt::Debug for PoolTransaction {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(fmt, "Transaction {{ ")?;
-        write!(fmt, "hash: {:?}, ", &self.pending_transaction.hash())?;
+        write!(fmt, "hash: {:?}, ", self.pending_transaction.hash())?;
         write!(fmt, "requires: [{}], ", hex_fmt_many(self.requires.iter()))?;
         write!(fmt, "provides: [{}], ", hex_fmt_many(self.provides.iter()))?;
-        write!(fmt, "raw tx: {:?}", &self.pending_transaction)?;
+        write!(fmt, "raw tx: {:?}", self.pending_transaction)?;
         write!(fmt, "}}")?;
         Ok(())
     }

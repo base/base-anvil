@@ -805,7 +805,7 @@ contract Issue12803Test is Test {
         r#"
 ...
 Ran 1 test for test/Issue12803.t.sol:Issue12803Test
-[PASS] test_negativeGas() (gas: 0)
+[PASS] test_negativeGas() (gas: 96)
 ...
 "#
     ]]);
@@ -835,7 +835,7 @@ contract Issue12803Test is Test {
         [r#"
 ...
 Ran 1 test for test/Issue12803.t.sol:Issue12803Test
-[PASS] test_negativeGas() (gas: 0)
+[PASS] test_negativeGas() (gas: 96)
 ...
 "#]
     ]);
@@ -871,7 +871,7 @@ contract Issue12803MultiTest is Test {
         r#"
 ...
 Ran 1 test for test/Issue12803Multi.t.sol:Issue12803MultiTest
-[PASS] test_multipleDeletes() (gas: 0)
+[PASS] test_multipleDeletes() (gas: 96)
 ...
 "#
     ]]);
