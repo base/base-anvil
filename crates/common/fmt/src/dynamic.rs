@@ -224,7 +224,7 @@ fn _serialize_value_as_json(value: DynSolValue, defs: &StructDefinitions) -> Res
         DynSolValue::Tuple(values) => Ok(Value::Array(
             values.into_iter().map(|v| _serialize_value_as_json(v, defs)).collect::<Result<_>>()?,
         )),
-        DynSolValue::Function(_) => eyre::bail!("cannot serialize function pointer"),
+        DynSolValue::Function(_) => Err(eyre::eyre!("cannot serialize function pointer")),
     }
 }
 
@@ -275,9 +275,9 @@ impl StructDefinitions {
         match matches.len() {
             0 => Ok(None),
             1 => Ok(Some(matches[0])),
-            _ => eyre::bail!(
+            _ => Err(eyre::eyre!(
                 "there are several structs with the same name. Use `<contract_name>.{key}` instead."
-            ),
+            )),
         }
     }
 }
