@@ -525,12 +525,3 @@ solar-interface = { package = "solar-interface", git = "https://github.com/parad
 solar-ast = { package = "solar-ast", git = "https://github.com/paradigmxyz/solar", rev = "530f129" }
 solar-sema = { package = "solar-sema", git = "https://github.com/paradigmxyz/solar", rev = "530f129" }
 
-# Local override for base-anvil's base/base git dep. Uncomment + adjust the
-# path to point at a local base/base checkout instead of the pinned remote.
-# Must stay AFTER all [patch.crates-io] entries so it does not steal them.
-# [patch."https://github.com/base/base.git"]
-# base-common-precompiles = { path = "../base/crates/common/precompiles" }
-# base-common-chains = { path = "../base/crates/common/chains" }
-# base-common-genesis = { path = "../base/crates/common/genesis" }
-# base-precompile-macros = { path = "../base/crates/common/precompile-macros" }
-# base-precompile-storage = { path = "../base/crates/common/precompile-storage" }
