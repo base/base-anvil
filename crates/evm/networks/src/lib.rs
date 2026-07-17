@@ -167,17 +167,13 @@ impl NetworkConfigs {
             // version per-call (e.g. Stablecoin V1 at Beryl). Pinned to Beryl
             // until `--base-fork` (BOP-428) makes the fork selectable at runtime.
             //
-            // Factory/policy use `install_with_observer` with a no-op observer:
-            // base/base dropped the plain `install` shims in favour of the
-            // observed variants. Metrics observation is scoped to the B-20
-            // token call path, which anvil does not wire up.
+            // Factory/policy take a no-op observer: metrics observation is
+            // scoped to the B-20 token call path, which anvil does not wire up.
             let admin = Some(self.base_activation_admin());
-            B20Factory::install_with_observer(precompiles, NoopPrecompileCallObserver);
-            BerylLookup::install(precompiles, BaseUpgrade::Beryl);
-            PolicyRegistryPrecompile::install_with_observer(
-                precompiles,
-                NoopPrecompileCallObserver,
-            );
+            let upgrade = BaseUpgrade::Beryl;
+            B20Factory::install_with_observer(precompiles, upgrade, NoopPrecompileCallObserver);
+            BerylLookup::install(precompiles, upgrade);
+            PolicyRegistryPrecompile::install(precompiles, upgrade);
             ActivationRegistry::install(precompiles, admin);
         }
     }
