@@ -46,7 +46,7 @@ pub fn find_contract_artifacts(
         Did you mean `{suggestion}`?"#
             );
         }
-        eyre::bail!(err)
+        eyre::bail!(err);
     };
 
     let abi = contract

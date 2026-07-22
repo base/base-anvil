@@ -264,7 +264,9 @@ impl ScriptRunner {
                     sh_err!("Failed with `{reason}`:\n")?;
                     (Address::ZERO, raw)
                 }
-                Err(e) => eyre::bail!("Failed deploying contract: {e:?}"),
+                Err(e) => {
+                    eyre::bail!("Failed deploying contract: {e:?}");
+                }
             };
 
             Ok(ScriptResult {

@@ -425,7 +425,7 @@ impl EtherscanVerificationProvider {
         } else {
             eyre::bail!(
                 "Fetching of constructor arguments is not supported for contracts created by contracts"
-            )
+            );
         };
 
         let output = context.project.compile_file(&context.target_path)?;
@@ -449,7 +449,7 @@ impl EtherscanVerificationProvider {
             sh_println!("Identified constructor arguments: {constructor_args}")?;
             Ok(constructor_args)
         } else {
-            eyre::bail!("Local bytecode doesn't match on-chain bytecode")
+            eyre::bail!("Local bytecode doesn't match on-chain bytecode");
         }
     }
 }

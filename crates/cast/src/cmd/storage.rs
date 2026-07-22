@@ -152,7 +152,7 @@ impl StorageArgs {
         };
         let metadata = source.items.first().unwrap();
         if metadata.is_vyper() {
-            eyre::bail!("Contract at provided address is not a valid Solidity contract")
+            eyre::bail!("Contract at provided address is not a valid Solidity contract");
         }
 
         // Create or reuse a persistent cache for Etherscan sources; fall back to a temp dir

@@ -83,7 +83,7 @@ fn parse_verification_result(cmd: &mut TestCommand, retries: u32) -> eyre::Resul
             "Failed to get verification, stdout: {}, stderr: {}",
             out,
             String::from_utf8_lossy(&output.stderr)
-        )
+        );
     })
 }
 

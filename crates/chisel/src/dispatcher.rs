@@ -110,7 +110,9 @@ impl ChiselDispatcher {
         if let Some(command) = input.strip_prefix(COMMAND_LEADER) {
             return match ChiselCommand::parse(command) {
                 Ok(cmd) => self.dispatch_command(cmd).await,
-                Err(e) => eyre::bail!("unrecognized command: {e}"),
+                Err(e) => {
+                    eyre::bail!("unrecognized command: {e}");
+                }
             };
         }
 
@@ -388,7 +390,7 @@ impl ChiselDispatcher {
                 sh_println!("Set calldata to '{}'", arg.yellow())
             }
             Err(e) => {
-                eyre::bail!("Invalid calldata: {e}")
+                eyre::bail!("Invalid calldata: {e}");
             }
         }
     }
@@ -501,7 +503,7 @@ impl ChiselDispatcher {
             return Ok(());
         }
 
-        eyre::bail!("Variable must exist within `run()` function.")
+        eyre::bail!("Variable must exist within `run()` function.");
     }
 }
 
