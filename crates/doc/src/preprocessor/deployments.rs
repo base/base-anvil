@@ -49,7 +49,7 @@ impl Preprocessor for Deployments {
                         .into_string()
                         .map_err(|e| eyre::eyre!("failed to extract directory name: {e:?}"))
                 } else {
-                    eyre::bail!("not a directory: {}", path.display())
+                    eyre::bail!("not a directory: {}", path.display());
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;

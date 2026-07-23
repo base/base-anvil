@@ -138,7 +138,7 @@ The specified sender via CLI/env vars does not match the sender configured via
 the hardware wallet's HD Path.
 Please use the `--hd-path <PATH>` parameter to specify the BIP32 Path which
 corresponds to the sender, or let foundry automatically detect it by not specifying any sender address."
-            )
+            );
     }
     Ok(())
 }
@@ -267,7 +267,7 @@ impl<P: Provider<AnyNetwork>> CastTxSender<P> {
                     // if the async flag is provided, immediately exit if no tx is found, otherwise
                     // try to poll for it
                     if cast_async {
-                        eyre::bail!("tx not found: {:?}", tx_hash)
+                        eyre::bail!("tx not found: {:?}", tx_hash);
                     } else {
                         PendingTransactionBuilder::new(self.provider.root().clone(), tx_hash)
                             .with_required_confirmations(confs)
@@ -495,9 +495,11 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InputState> {
             FoundryTypedTx::Eip4844(t) => t.encoded_for_signing(),
             FoundryTypedTx::Eip7702(t) => t.encoded_for_signing(),
             FoundryTypedTx::Tempo(t) => t.encoded_for_signing(),
-            _ => eyre::bail!(
-                "Cannot generate unsigned transaction for transaction: unknown transaction type"
-            ),
+            _ => {
+                eyre::bail!(
+                    "Cannot generate unsigned transaction for transaction: unknown transaction type"
+                );
+            }
         }))
     }
 
@@ -542,7 +544,7 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InputState> {
                 let CliAuthorizationList::Signed(signed_auth) = auth else {
                     eyre::bail!(
                         "SignedAuthorization needs to be provided for generating unsigned 7702 txs"
-                    )
+                    );
                 };
                 signed_auths.push(signed_auth);
             }
@@ -608,10 +610,10 @@ impl<P: Provider<AnyNetwork>> CastTxBuilder<P, InputState> {
                         && let Some(data) = &payload.data
                         && let Ok(Some(decoded_error)) = decode_execution_revert(data).await
                     {
-                        eyre::bail!("Failed to estimate gas: {}: {}", err, decoded_error)
+                        eyre::bail!("Failed to estimate gas: {}: {}", err, decoded_error);
                     }
                 }
-                eyre::bail!("Failed to estimate gas: {}", err)
+                eyre::bail!("Failed to estimate gas: {}", err);
             }
         }
     }

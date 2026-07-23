@@ -317,7 +317,9 @@ impl VerifyBytecodeArgs {
         let transaction = provider
             .get_transaction_by_hash(creation_data.transaction_hash)
             .await
-            .or_else(|e| eyre::bail!("Couldn't fetch transaction from RPC: {:?}", e))?
+            .or_else(|e| {
+                eyre::bail!("Couldn't fetch transaction from RPC: {:?}", e);
+            })?
             .ok_or_else(|| {
                 eyre::eyre!("Transaction not found for hash {}", creation_data.transaction_hash)
             })?;
@@ -325,7 +327,9 @@ impl VerifyBytecodeArgs {
         let receipt = provider
             .get_transaction_receipt(creation_data.transaction_hash)
             .await
-            .or_else(|e| eyre::bail!("Couldn't fetch transaction receipt from RPC: {:?}", e))?;
+            .or_else(|e| {
+                eyre::bail!("Couldn't fetch transaction receipt from RPC: {:?}", e);
+            })?;
         let receipt = if let Some(receipt) = receipt {
             receipt
         } else {
@@ -438,12 +442,16 @@ impl VerifyBytecodeArgs {
             // Get contract creation block.
             let simulation_block = match self.block {
                 Some(BlockId::Number(BlockNumberOrTag::Number(block))) => block,
-                Some(_) => eyre::bail!("Invalid block number"),
+                Some(_) => {
+                    eyre::bail!("Invalid block number");
+                }
                 None => {
                     let provider = utils::get_provider(&config)?;
                     provider
                     .get_transaction_by_hash(creation_data.transaction_hash)
-                    .await.or_else(|e| eyre::bail!("Couldn't fetch transaction from RPC: {:?}", e))?.ok_or_else(|| {
+                    .await.or_else(|e| {
+                        eyre::bail!("Couldn't fetch transaction from RPC: {:?}", e);
+                    })?.ok_or_else(|| {
                         eyre::eyre!("Transaction not found for hash {}", creation_data.transaction_hash)
                     })?
                     .block_number.ok_or_else(|| {

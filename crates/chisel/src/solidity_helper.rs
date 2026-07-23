@@ -169,10 +169,8 @@ impl SolidityHelper {
                     }
                 },
 
-                Literal { kind: Str { terminated, .. } } => {
-                    if !terminated {
-                        return ValidationResult::Incomplete;
-                    }
+                Literal { kind: Str { terminated, .. } } if !terminated => {
+                    return ValidationResult::Incomplete;
                 }
 
                 BlockComment { terminated, .. } if !terminated => {

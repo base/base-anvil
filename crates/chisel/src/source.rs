@@ -218,7 +218,9 @@ impl IntermediateOutput {
             .ok_or_else(|| eyre::eyre!("Could not find run function body!"))?
         {
             pt::Statement::Block { statements, .. } => Ok(statements),
-            _ => eyre::bail!("Could not find statements within run function body!"),
+            _ => {
+                eyre::bail!("Could not find statements within run function body!");
+            }
         }
     }
 }

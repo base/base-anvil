@@ -218,7 +218,7 @@ or RPC that has unlocked accounts, the --unlocked or --ethsign flags can be used
 respectively. The sender address can be specified by setting the `ETH_FROM` environment
 variable to the desired unlocked account address, or by providing the address directly
 using the --from flag."
-            )
+            );
         };
 
         Ok(signer)

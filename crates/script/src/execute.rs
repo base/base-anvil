@@ -304,7 +304,7 @@ impl ExecutedState {
             if !self.build_data.libraries.is_empty() {
                 eyre::bail!(
                     "Multi chain deployment does not support library linking at the moment."
-                )
+                );
             }
         }
         rpc_data.check_shanghai_support().await?;

@@ -415,7 +415,9 @@ impl BenchmarkProject {
             "forge_fuzz_test" => self.bench_forge_fuzz_test(version, runs, verbose),
             "forge_coverage" => self.bench_forge_coverage(version, runs, verbose),
             "forge_isolate_test" => self.bench_forge_isolate_test(version, runs, verbose),
-            _ => eyre::bail!("Unknown benchmark: {}", benchmark),
+            _ => {
+                eyre::bail!("Unknown benchmark: {}", benchmark);
+            }
         }
     }
 }

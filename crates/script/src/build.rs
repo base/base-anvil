@@ -219,7 +219,7 @@ impl PreprocessedState {
                 if target_name != id_name {
                     eyre::bail!(
                         "Multiple contracts in the target path. Please specify the contract name with `--tc ContractName`"
-                    )
+                    );
                 }
             }
             target_id = Some(id);
