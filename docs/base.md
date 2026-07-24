@@ -102,9 +102,7 @@ documentation at [getfoundry.sh](https://getfoundry.sh), and `base-forge --help`
 | --- | --- | --- |
 | `base-forge`, `base-cast`, `base-anvil`, `base-chisel` | all | Wrappers that run the Base build with precompiles enabled by default. Installed by `base-foundryup`. |
 | `--base` flag | `anvil` | Installs the Base precompiles into the node's EVM. The `base-anvil` wrapper passes this for you. |
-| `--base-fork <fork>` flag | `anvil` | Selects which Base upgrade's precompile set `--base` installs (e.g. `beryl`, `cobalt`). Defaults to `beryl`. Has no effect without `--base`. |
 | `base = true` (in `foundry.toml`) | `forge`, `cast`, `chisel` | Installs the Base precompiles into the in-process EVM. Read from the active profile. |
-| `base_fork = "<fork>"` (in `foundry.toml`) | `forge`, `cast`, `chisel` | Config-file form of `--base-fork` (e.g. `base_fork = "cobalt"`). Defaults to `beryl`; only applies when `base = true`. |
 | `FOUNDRY_BASE=true` (env) | `forge`, `cast`, `chisel` | Same as `base = true`, set via the environment. |
 | `base-foundryup` | installer | Base-only installer; select a version with `--install <ref>` (e.g. `v1.1.0`, `nightly`). Never touches stock `foundryup`. |
 

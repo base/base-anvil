@@ -30,8 +30,9 @@ use std::collections::BTreeMap;
 const BASE_TOKEN_FACTORY_ADDRESS: Address = B20FactoryStorage::ADDRESS;
 const BASE_POLICY_REGISTRY_ADDRESS: Address = PolicyRegistryStorage::ADDRESS;
 const BASE_ACTIVATION_REGISTRY_ADDRESS: Address = ActivationRegistryStorage::ADDRESS;
-// Cobalt-and-later EIP-8130 singletons, installed only when `--base-fork` selects
-// Cobalt or later (mirrors the `upgrade >= Cobalt` arm of `BasePrecompiles::install`).
+// Cobalt-and-later EIP-8130 singletons, installed only when the source-pinned
+// `BASE_PRECOMPILE_UPGRADE` is Cobalt or later (mirrors the `upgrade >= Cobalt`
+// arm of `BasePrecompiles::install`).
 const BASE_TX_CONTEXT_ADDRESS: Address = TxContextStorage::ADDRESS;
 const BASE_NONCE_MANAGER_ADDRESS: Address = NonceManagerStorage::ADDRESS;
 
@@ -44,7 +45,8 @@ const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] =
     &[BASE_TOKEN_FACTORY_ADDRESS, BASE_POLICY_REGISTRY_ADDRESS, BASE_ACTIVATION_REGISTRY_ADDRESS];
 
 /// Cobalt-and-later singleton sentinel set: the Beryl singletons plus the EIP-8130
-/// TxContext + NonceManager precompiles that `--base-fork cobalt` installs.
+/// TxContext + NonceManager precompiles installed when `BASE_PRECOMPILE_UPGRADE`
+/// pins Cobalt or later.
 const BASE_COBALT_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] = &[
     BASE_TOKEN_FACTORY_ADDRESS,
     BASE_POLICY_REGISTRY_ADDRESS,
@@ -61,44 +63,20 @@ const BASE_COBALT_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] = &[
 const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
     address!("0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc");
 
-pub mod celo;
-
-/// Parses a `--base-fork` flag value (or `base_fork` config key) into a [`BaseUpgrade`].
+/// The Base upgrade (fork) whose precompile set `--base` installs, pinned at
+/// compile time. Per the fork-test snapshot strategy (BOP-427 / BOP-453) each
+/// snapshot is an immutable base-anvil commit that selects one fork in source —
+/// there is deliberately no public runtime `--base-fork` / `--hardfork` selector.
 ///
-/// Accepts the canonical contract fork names and their aliases
-fn parse_base_fork(value: &str) -> Result<BaseUpgrade, String> {
-    BaseUpgrade::from_contract_fork_name(value).ok_or_else(|| {
-        format!(
-            "unknown Base fork '{value}'; expected a Base upgrade name such as 'beryl' or 'cobalt'"
-        )
-    })
-}
+/// This snapshot pins Cobalt, so `--base` installs the complete Cobalt precompile
+/// set: the Beryl singletons plus the EIP-8130 TxContext + NonceManager, with the
+/// ActivationRegistry handed a state-backed admin config. Everything downstream
+/// (installer, trace labels, precompile map, sentinel warming) keys off this one
+/// constant, so re-pinning a snapshot to another fork (e.g. the Beryl pair) is a
+/// single-line change.
+const BASE_PRECOMPILE_UPGRADE: BaseUpgrade = BaseUpgrade::Cobalt;
 
-/// Serde adapter for the optional `base_fork` config key
-mod base_fork_serde {
-    use base_common_chains::BaseUpgrade;
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    use super::parse_base_fork;
-
-    pub(super) fn serialize<S: Serializer>(
-        value: &Option<BaseUpgrade>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        match value {
-            Some(upgrade) => serializer.serialize_some(upgrade.contract_id()),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Option<BaseUpgrade>, D::Error> {
-        Option::<String>::deserialize(deserializer)?
-            .map(|raw| parse_base_fork(&raw).map_err(serde::de::Error::custom))
-            .transpose()
-    }
-}
+pub mod celo;
 
 #[derive(Clone, Debug, Default, Parser, Copy, Serialize, Deserialize, PartialEq)]
 pub struct NetworkConfigs {
@@ -125,17 +103,6 @@ pub struct NetworkConfigs {
     #[arg(help_heading = "Networks", long, requires = "base")]
     #[serde(default)]
     base_activation_admin: Option<Address>,
-    /// Select the Base upgrade (fork) whose precompile set `--base` installs. Has no
-    /// effect unless `--base` is set. Defaults to Beryl
-    #[arg(
-        help_heading = "Networks",
-        long,
-        value_name = "FORK",
-        requires = "base",
-        value_parser = parse_base_fork
-    )]
-    #[serde(default, with = "base_fork_serde")]
-    base_fork: Option<BaseUpgrade>,
     /// Whether to bypass prevrandao.
     #[arg(skip)]
     #[serde(default)]
@@ -194,17 +161,6 @@ impl NetworkConfigs {
         Self { base: true, ..Default::default() }
     }
 
-    /// Enables `--base` dispatch pinned to a specific Base fork
-    pub fn with_base_fork(fork: BaseUpgrade) -> Self {
-        Self { base: true, base_fork: Some(fork), ..Default::default() }
-    }
-
-    /// The Base upgrade (fork) whose precompile set `--base` installs, defaulting to
-    /// Beryl when `--base-fork` is not set.
-    pub fn base_upgrade(&self) -> BaseUpgrade {
-        self.base_fork.unwrap_or(BaseUpgrade::Beryl)
-    }
-
     /// Returns the activation admin address that will be configured on the
     /// ActivationRegistry precompile when `--base` is set. Falls back to the
     /// default Base activation admin when no override is provided.
@@ -235,9 +191,9 @@ impl NetworkConfigs {
         if self.base {
             // Mirrors `BasePrecompiles::install_with_observer` in
             // base/base/crates/common/precompiles/src/provider.rs for the
-            // fork selected by `--base-fork` (default Beryl).
+            // source-pinned `BASE_PRECOMPILE_UPGRADE` (this snapshot: Cobalt).
             let admin = Some(self.base_activation_admin());
-            let upgrade = self.base_upgrade();
+            let upgrade = BASE_PRECOMPILE_UPGRADE;
             B20Factory::install_with_observer(precompiles, upgrade, NoopPrecompileCallObserver);
             BerylLookup::install(precompiles, upgrade);
             PolicyRegistryPrecompile::install(precompiles, upgrade);
@@ -262,7 +218,7 @@ impl NetworkConfigs {
             labels.insert(BASE_TOKEN_FACTORY_ADDRESS, "BaseTokenFactory".to_string());
             labels.insert(BASE_POLICY_REGISTRY_ADDRESS, "BasePolicyRegistry".to_string());
             labels.insert(ActivationRegistryStorage::ADDRESS, "BaseActivationRegistry".to_string());
-            if self.base_upgrade() >= BaseUpgrade::Cobalt {
+            if BASE_PRECOMPILE_UPGRADE >= BaseUpgrade::Cobalt {
                 labels.insert(BASE_TX_CONTEXT_ADDRESS, "BaseTxContext".to_string());
                 labels.insert(BASE_NONCE_MANAGER_ADDRESS, "BaseNonceManager".to_string());
             }
@@ -282,7 +238,7 @@ impl NetworkConfigs {
             precompiles.insert("BasePolicyRegistry".to_string(), BASE_POLICY_REGISTRY_ADDRESS);
             precompiles
                 .insert("BaseActivationRegistry".to_string(), ActivationRegistryStorage::ADDRESS);
-            if self.base_upgrade() >= BaseUpgrade::Cobalt {
+            if BASE_PRECOMPILE_UPGRADE >= BaseUpgrade::Cobalt {
                 precompiles.insert("BaseTxContext".to_string(), BASE_TX_CONTEXT_ADDRESS);
                 precompiles.insert("BaseNonceManager".to_string(), BASE_NONCE_MANAGER_ADDRESS);
             }
@@ -298,7 +254,7 @@ impl NetworkConfigs {
         if !self.base {
             return &[];
         }
-        if self.base_upgrade() >= BaseUpgrade::Cobalt {
+        if BASE_PRECOMPILE_UPGRADE >= BaseUpgrade::Cobalt {
             BASE_COBALT_PRECOMPILE_SENTINEL_ADDRESSES
         } else {
             BASE_PRECOMPILE_SENTINEL_ADDRESSES
@@ -349,58 +305,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn base_fork_defaults_to_beryl() {
-        // Existing consumers that only pass `--base` stay on Beryl.
-        assert_eq!(NetworkConfigs::default().base_upgrade(), BaseUpgrade::Beryl);
-        assert_eq!(NetworkConfigs::with_base().base_upgrade(), BaseUpgrade::Beryl);
+    fn snapshot_pins_cobalt() {
+        // This base-anvil snapshot is the Cobalt fork-test pair (BOP-453). If the
+        // pin is changed, the install set below and the paired base-std suite must
+        // be re-reviewed together, so fail loudly rather than silently dispatching
+        // a different fork.
+        assert_eq!(BASE_PRECOMPILE_UPGRADE, BaseUpgrade::Cobalt);
     }
 
     #[test]
-    fn with_base_fork_selects_upgrade() {
+    fn base_installs_complete_cobalt_precompile_set() {
+        let cfg = NetworkConfigs::with_base();
+
+        // The Cobalt sentinel set is the three Beryl singletons plus the EIP-8130
+        // TxContext + NonceManager, matching the `upgrade >= Cobalt` arm of
+        // `BasePrecompiles::install`.
+        let sentinels = cfg.base_precompile_sentinel_addresses();
+        assert_eq!(sentinels.len(), 5);
+        assert!(sentinels.contains(&BASE_TX_CONTEXT_ADDRESS));
+        assert!(sentinels.contains(&BASE_NONCE_MANAGER_ADDRESS));
+
+        let labels = cfg.precompiles_label();
+        assert_eq!(labels.get(&BASE_TX_CONTEXT_ADDRESS).map(String::as_str), Some("BaseTxContext"));
         assert_eq!(
-            NetworkConfigs::with_base_fork(BaseUpgrade::Cobalt).base_upgrade(),
-            BaseUpgrade::Cobalt
+            labels.get(&BASE_NONCE_MANAGER_ADDRESS).map(String::as_str),
+            Some("BaseNonceManager")
         );
+
+        let precompiles = cfg.precompiles();
+        assert_eq!(precompiles.get("BaseTxContext"), Some(&BASE_TX_CONTEXT_ADDRESS));
+        assert_eq!(precompiles.get("BaseNonceManager"), Some(&BASE_NONCE_MANAGER_ADDRESS));
+
+        // The activation seeds still cover exactly the three gated feature flags.
+        assert_eq!(cfg.base_activation_seeds().len(), 3);
     }
 
     #[test]
-    fn parse_base_fork_accepts_names_and_aliases() {
-        assert_eq!(parse_base_fork("beryl").unwrap(), BaseUpgrade::Beryl);
-        assert_eq!(parse_base_fork("cobalt").unwrap(), BaseUpgrade::Cobalt);
-        assert_eq!(parse_base_fork("COBALT").unwrap(), BaseUpgrade::Cobalt);
-        assert_eq!(parse_base_fork("v3").unwrap(), BaseUpgrade::Cobalt);
-        assert!(parse_base_fork("not-a-fork").is_err());
-    }
-
-    #[test]
-    fn cli_parses_base_fork_and_requires_base() {
-        // `--base-fork` is reachable through the shared CLI flatten and parses
-        let cfg = NetworkConfigs::try_parse_from(["x", "--base", "--base-fork", "cobalt"]).unwrap();
-        assert_eq!(cfg.base_upgrade(), BaseUpgrade::Cobalt);
-        // `--base-fork` has no meaning without `--base`.
-        assert!(NetworkConfigs::try_parse_from(["x", "--base-fork", "cobalt"]).is_err());
-        // Unknown fork names are rejected at parse time.
-        assert!(NetworkConfigs::try_parse_from(["x", "--base", "--base-fork", "granate"]).is_err());
-    }
-
-    #[test]
-    fn cobalt_selection_adds_eip8130_singletons() {
-        let beryl = NetworkConfigs::with_base();
-        let cobalt = NetworkConfigs::with_base_fork(BaseUpgrade::Cobalt);
-
-        // Beryl exposes the three Beryl singletons; Cobalt adds TxContext + NonceManager
-        assert_eq!(beryl.base_precompile_sentinel_addresses().len(), 3);
-        let cobalt_sentinels = cobalt.base_precompile_sentinel_addresses();
-        assert_eq!(cobalt_sentinels.len(), 5);
-        assert!(cobalt_sentinels.contains(&BASE_TX_CONTEXT_ADDRESS));
-        assert!(cobalt_sentinels.contains(&BASE_NONCE_MANAGER_ADDRESS));
-
-        assert!(!beryl.precompiles_label().contains_key(&BASE_TX_CONTEXT_ADDRESS));
-        assert!(cobalt.precompiles_label().contains_key(&BASE_TX_CONTEXT_ADDRESS));
-        assert!(cobalt.precompiles_label().contains_key(&BASE_NONCE_MANAGER_ADDRESS));
-
-        assert!(!beryl.precompiles().contains_key("BaseTxContext"));
-        assert!(cobalt.precompiles().contains_key("BaseTxContext"));
-        assert!(cobalt.precompiles().contains_key("BaseNonceManager"));
+    fn without_base_installs_nothing() {
+        let cfg = NetworkConfigs::default();
+        assert!(cfg.base_precompile_sentinel_addresses().is_empty());
+        assert!(cfg.base_activation_seeds().is_empty());
+        assert!(!cfg.precompiles_label().contains_key(&BASE_TX_CONTEXT_ADDRESS));
+        assert!(!cfg.precompiles().contains_key("BaseTxContext"));
     }
 }
