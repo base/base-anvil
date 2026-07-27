@@ -174,7 +174,7 @@ impl NetworkConfigs {
             B20Factory::install_with_observer(precompiles, upgrade, NoopPrecompileCallObserver);
             BerylLookup::install(precompiles, upgrade);
             PolicyRegistryPrecompile::install(precompiles, upgrade);
-            ActivationRegistry::install(precompiles, admin);
+            ActivationRegistry::install(precompiles, admin, upgrade);
         }
     }
 
