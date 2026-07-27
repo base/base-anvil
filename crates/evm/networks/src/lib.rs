@@ -15,9 +15,10 @@ use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use alloy_primitives::{Address, U256, address, keccak256, map::AddressHashMap};
 use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
-    ActivationFeature, ActivationRegistry, ActivationRegistryStorage, B20Factory,
-    B20FactoryStorage, BerylLookup, NoopPrecompileCallObserver, PolicyRegistryPrecompile,
-    PolicyRegistryStorage,
+    ActivationAdminConfig, ActivationFeature, ActivationRegistry, ActivationRegistryStorage,
+    B20Factory, B20FactoryStorage, BerylLookup, NonceManager, NonceManagerStorage,
+    NoopPrecompileCallObserver, PolicyRegistryPrecompile, PolicyRegistryStorage, TxContext,
+    TxContextStorage,
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -29,14 +30,21 @@ use std::collections::BTreeMap;
 const BASE_TOKEN_FACTORY_ADDRESS: Address = B20FactoryStorage::ADDRESS;
 const BASE_POLICY_REGISTRY_ADDRESS: Address = PolicyRegistryStorage::ADDRESS;
 const BASE_ACTIVATION_REGISTRY_ADDRESS: Address = ActivationRegistryStorage::ADDRESS;
+const BASE_TX_CONTEXT_ADDRESS: Address = TxContextStorage::ADDRESS;
+const BASE_NONCE_MANAGER_ADDRESS: Address = NonceManagerStorage::ADDRESS;
 
 /// Singleton Base precompile addresses to pre-warm with sentinel bytecode so that
 /// Solidity high-level wrapper calls survive the codegen `extcodesize(target) > 0`
 /// check. B-20 token addresses (every `0xb2..` address claimed by the prefix
 /// dispatcher) are NOT pre-warmed here — tests that touch concrete B-20 tokens
 /// must etch the same sentinel themselves, since the address space is unbounded.
-const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] =
-    &[BASE_TOKEN_FACTORY_ADDRESS, BASE_POLICY_REGISTRY_ADDRESS, BASE_ACTIVATION_REGISTRY_ADDRESS];
+const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] = &[
+    BASE_TOKEN_FACTORY_ADDRESS,
+    BASE_POLICY_REGISTRY_ADDRESS,
+    BASE_ACTIVATION_REGISTRY_ADDRESS,
+    BASE_TX_CONTEXT_ADDRESS,
+    BASE_NONCE_MANAGER_ADDRESS,
+];
 
 /// Default activation admin for the local dev chain, mirroring
 /// `BasePrecompiles`'s default in `base/base/crates/common/precompiles/src/provider.rs`
@@ -60,9 +68,9 @@ pub struct NetworkConfigs {
     #[serde(default)]
     celo: bool,
     /// Enable Base custom precompile dispatch (TokenFactory, B-20 tokens,
-    /// PolicyRegistry, ActivationRegistry). Required to fork-test against
-    /// chains that host Base's Rust precompiles (vibenet, Beryl-or-later
-    /// mainnets/testnets).
+    /// PolicyRegistry, ActivationRegistry, TxContext, NonceManager). Required to
+    /// fork-test against chains that host Base's Rust precompiles (vibenet,
+    /// Cobalt-or-later mainnets/testnets).
     #[arg(help_heading = "Networks", long, conflicts_with = "celo")]
     #[serde(default)]
     base: bool,
@@ -159,22 +167,35 @@ impl NetworkConfigs {
             });
         }
         if self.base {
-            // Mirrors `BasePrecompiles::install_with_observer` for the Beryl
+            // Mirrors `BasePrecompiles::install_with_observer` for the Cobalt
             // upgrade in base/base/crates/common/precompiles/src/provider.rs.
-            // Three singleton precompiles plus the versioned B-20 prefix
-            // dispatcher. `BerylLookup::install` owns the dispatcher and
-            // threads the Base upgrade so each B-20 token resolves its logic
-            // version per-call (e.g. Stablecoin V1 at Beryl). Pinned to Beryl
-            // until `--base-fork` (BOP-428) makes the fork selectable at runtime.
+            // The Beryl-and-later singletons plus the versioned B-20 prefix
+            // dispatcher, and the Cobalt-and-later precompiles below.
+            // `BerylLookup::install` owns the dispatcher and threads the Base
+            // upgrade so each B-20 token resolves its logic version per-call.
+            // Pinned to Cobalt until `--base-fork` (BOP-428) makes the fork
+            // selectable at runtime.
             //
             // Factory/policy take a no-op observer: metrics observation is
             // scoped to the B-20 token call path, which anvil does not wire up.
             let admin = Some(self.base_activation_admin());
-            let upgrade = BaseUpgrade::Beryl;
+            let upgrade = BaseUpgrade::Cobalt;
             B20Factory::install_with_observer(precompiles, upgrade, NoopPrecompileCallObserver);
             BerylLookup::install(precompiles, upgrade);
             PolicyRegistryPrecompile::install(precompiles, upgrade);
-            ActivationRegistry::install(precompiles, admin);
+            // Cobalt moves the activation registry onto its state-backed admin
+            // path (the admin storage slot, falling back to the static config
+            // admin while unset), matching `ActivationAdminConfig::new(admin,
+            // upgrade >= Cobalt)` in base/base.
+            ActivationRegistry::install_with_config(
+                precompiles,
+                ActivationAdminConfig::state_backed(admin),
+            );
+            // Cobalt adds the transaction-context and nonce-manager singleton
+            // precompiles. Neither is observed, by design (metrics are scoped to
+            // the B-20 token call path).
+            TxContext::install(precompiles);
+            NonceManager::install(precompiles);
         }
     }
 
@@ -188,6 +209,8 @@ impl NetworkConfigs {
             labels.insert(BASE_TOKEN_FACTORY_ADDRESS, "BaseTokenFactory".to_string());
             labels.insert(BASE_POLICY_REGISTRY_ADDRESS, "BasePolicyRegistry".to_string());
             labels.insert(ActivationRegistryStorage::ADDRESS, "BaseActivationRegistry".to_string());
+            labels.insert(BASE_TX_CONTEXT_ADDRESS, "BaseTxContext".to_string());
+            labels.insert(BASE_NONCE_MANAGER_ADDRESS, "BaseNonceManager".to_string());
         }
         labels
     }
@@ -204,6 +227,8 @@ impl NetworkConfigs {
             precompiles.insert("BasePolicyRegistry".to_string(), BASE_POLICY_REGISTRY_ADDRESS);
             precompiles
                 .insert("BaseActivationRegistry".to_string(), ActivationRegistryStorage::ADDRESS);
+            precompiles.insert("BaseTxContext".to_string(), BASE_TX_CONTEXT_ADDRESS);
+            precompiles.insert("BaseNonceManager".to_string(), BASE_NONCE_MANAGER_ADDRESS);
         }
         precompiles
     }
