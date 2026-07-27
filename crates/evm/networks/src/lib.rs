@@ -190,6 +190,7 @@ impl NetworkConfigs {
             ActivationRegistry::install_with_config(
                 precompiles,
                 ActivationAdminConfig::state_backed(admin),
+                upgrade,
             );
             // Cobalt adds the transaction-context and nonce-manager singleton
             // precompiles. Neither is observed, by design (metrics are scoped to
