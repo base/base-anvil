@@ -10,8 +10,8 @@ use rand::seq::SliceRandom;
 use std::{
     env,
     sync::{
-        LazyLock,
         atomic::{AtomicUsize, Ordering},
+        LazyLock,
     },
 };
 
@@ -53,6 +53,28 @@ shuffled_list!(
         "C7I2G4JTA5EPYS42Z8IZFEIMQNI5GXIJEV",
         "A15KZUMZXXCK1P25Y1VP1WGIVBBHIZDS74",
         "3IA6ASNQXN8WKN7PNFX7T72S9YG56X9FPG",
+    ],
+);
+
+// List of public Ethereum mainnet archive HTTP RPC endpoints (no API key required).
+shuffled_list!(
+    MAINNET_ARCHIVE_HTTP_RPCS,
+    vec![
+        "https://ethereum.drpc.org",
+        "https://rpc.ankr.com/eth",
+        "https://ethereum-rpc.publicnode.com",
+        "https://eth.llamarpc.com",
+    ],
+);
+
+// List of public Ethereum mainnet archive WS RPC endpoints (no API key required).
+shuffled_list!(
+    MAINNET_ARCHIVE_WS_RPCS,
+    vec![
+        "wss://ethereum.drpc.org",
+        "wss://rpc.ankr.com/eth/ws",
+        "wss://ethereum-rpc.publicnode.com",
+        "wss://eth.llamarpc.com",
     ],
 );
 
@@ -113,7 +135,11 @@ fn next_archive_url(is_ws: bool) -> String {
         return url;
     }
 
-    let url = next_drpc_endpoint(is_ws, "ethereum");
+    let url = if is_ws {
+        MAINNET_ARCHIVE_WS_RPCS.next().to_string()
+    } else {
+        MAINNET_ARCHIVE_HTTP_RPCS.next().to_string()
+    };
     test_debug!("next_archive_url(is_ws={is_ws}) = {}", debug_url(&url));
     url
 }
