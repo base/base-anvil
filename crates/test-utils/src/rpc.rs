@@ -10,8 +10,8 @@ use rand::seq::SliceRandom;
 use std::{
     env,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         LazyLock,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
@@ -60,10 +60,10 @@ shuffled_list!(
 shuffled_list!(
     MAINNET_ARCHIVE_HTTP_RPCS,
     vec![
-        "https://ethereum.drpc.org",
-        "https://rpc.ankr.com/eth",
-        "https://ethereum-rpc.publicnode.com",
-        "https://eth.llamarpc.com",
+        "https://eth-mainnet.public.blastapi.io",
+        "https://mainnet.gateway.tenderly.co",
+        "https://eth.merkle.io",
+        "https://rpc.mevblocker.io",
     ],
 );
 
