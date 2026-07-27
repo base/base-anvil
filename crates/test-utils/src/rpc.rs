@@ -56,6 +56,28 @@ shuffled_list!(
     ],
 );
 
+// List of public Ethereum mainnet archive HTTP RPC endpoints (no API key required).
+shuffled_list!(
+    MAINNET_ARCHIVE_HTTP_RPCS,
+    vec![
+        "https://eth-mainnet.public.blastapi.io",
+        "https://mainnet.gateway.tenderly.co",
+        "https://eth.merkle.io",
+        "https://rpc.mevblocker.io",
+    ],
+);
+
+// List of public Ethereum mainnet archive WS RPC endpoints (no API key required).
+shuffled_list!(
+    MAINNET_ARCHIVE_WS_RPCS,
+    vec![
+        "wss://ethereum.drpc.org",
+        "wss://rpc.ankr.com/eth/ws",
+        "wss://ethereum-rpc.publicnode.com",
+        "wss://eth.llamarpc.com",
+    ],
+);
+
 /// the RPC endpoints used during tests
 pub fn rpc_endpoints() -> RpcEndpoints {
     RpcEndpoints::new([
@@ -113,7 +135,11 @@ fn next_archive_url(is_ws: bool) -> String {
         return url;
     }
 
-    let url = next_drpc_endpoint(is_ws, "ethereum");
+    let url = if is_ws {
+        MAINNET_ARCHIVE_WS_RPCS.next().to_string()
+    } else {
+        MAINNET_ARCHIVE_HTTP_RPCS.next().to_string()
+    };
     test_debug!("next_archive_url(is_ws={is_ws}) = {}", debug_url(&url));
     url
 }
