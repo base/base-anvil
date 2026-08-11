@@ -331,6 +331,7 @@ impl EthApi {
                 self.raw_transaction(hash).await.to_rpc_result()
             }
             EthRequest::DebugGetRawHeader(block) => self.raw_header(block).to_rpc_result(),
+            EthRequest::DebugGetRawReceipts(block) => self.raw_receipts(block).to_rpc_result(),
             // non eth-standard rpc calls
             EthRequest::DebugTraceTransaction(tx, opts) => {
                 self.debug_trace_transaction(tx, opts).await.to_rpc_result()
@@ -1583,6 +1584,15 @@ impl EthApi {
     pub fn raw_header(&self, block: BlockId) -> Result<Option<Bytes>> {
         node_info!("debug_getRawHeader");
         Ok(self.backend.get_block(block).map(|block| alloy_rlp::encode(&block.header).into()))
+    }
+
+    /// Returns canonical EIP-2718 receipt encodings in transaction order.
+    pub fn raw_receipts(&self, block: BlockId) -> Result<Option<Vec<Bytes>>> {
+        node_info!("debug_getRawReceipts");
+        let Some(block) = self.backend.get_block(block) else { return Ok(None) };
+        Ok(self.backend.mined_receipts(block.header.hash_slow()).map(|receipts| {
+            receipts.into_iter().map(|receipt| receipt.encoded_2718().into()).collect()
+        }))
     }
 
     /// Returns an uncles at given block and index.

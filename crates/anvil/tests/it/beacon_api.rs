@@ -9,6 +9,7 @@ use alloy_rlp::Decodable;
 use alloy_rpc_types::{BlockNumberOrTag, TransactionRequest};
 use alloy_rpc_types_beacon::{genesis::GenesisResponse, sidecar::GetBlobsResponse};
 use alloy_serde::WithOtherFields;
+use alloy_trie::root::ordered_trie_root_encoded;
 use anvil::{NodeConfig, spawn};
 use foundry_evm::hardfork::EthereumHardfork;
 use serde_json::json;
@@ -293,6 +294,81 @@ async fn test_debug_get_raw_header() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "debug_getRawHeader",
+            "params": ["0xffffff"]
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(unavailable_response["result"].is_null());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_debug_get_raw_receipts() {
+    let (_api, handle) = spawn(NodeConfig::test()).await;
+    let provider = http_provider(&handle.http_endpoint());
+    let wallets = handle.dev_wallets().collect::<Vec<_>>();
+
+    provider
+        .send_transaction(
+            TransactionRequest::default()
+                .from(wallets[0].address())
+                .to(wallets[1].address())
+                .value(U256::from(1))
+                .into(),
+        )
+        .await
+        .unwrap()
+        .get_receipt()
+        .await
+        .unwrap();
+
+    let block = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    let client = reqwest::Client::new();
+    let raw_receipts_response: serde_json::Value = client
+        .post(handle.http_endpoint())
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "debug_getRawReceipts",
+            "params": [block.header.hash]
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let raw_receipts: Vec<Bytes> =
+        serde_json::from_value(raw_receipts_response["result"].clone()).unwrap();
+
+    assert_eq!(raw_receipts.len(), 1);
+    assert_eq!(ordered_trie_root_encoded(&raw_receipts), block.header.receipts_root);
+
+    let genesis_receipts_response: serde_json::Value = client
+        .post(handle.http_endpoint())
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "debug_getRawReceipts",
+            "params": ["0x0"]
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(genesis_receipts_response["result"], json!([]));
+
+    let unavailable_response: serde_json::Value = client
+        .post(handle.http_endpoint())
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "debug_getRawReceipts",
             "params": ["0xffffff"]
         }))
         .send()
