@@ -14,5 +14,6 @@ pub fn router(api: EthApi) -> Router {
         .route("/eth/v1/beacon/blob_sidecars/{block_id}", get(handlers::handle_get_blob_sidecars))
         .route("/eth/v1/beacon/blobs/{block_id}", get(handlers::handle_get_blobs))
         .route("/eth/v1/beacon/genesis", get(handlers::handle_get_genesis))
+        .route("/eth/v1/config/spec", get(handlers::handle_get_spec))
         .with_state(api)
 }
