@@ -87,6 +87,21 @@ pub async fn handle_get_genesis(State(api): State<EthApi>) -> Response {
         Err(_) => BeaconError::internal_error().into_response(),
     }
 }
+
+/// Handles requests for the Beacon chain configuration used by Base clients.
+///
+/// GET /eth/v1/config/spec
+pub async fn handle_get_spec(State(api): State<EthApi>) -> Response {
+    match api.anvil_get_interval_mining().ok().flatten().filter(|interval| *interval > 0) {
+        Some(interval) => Json(serde_json::json!({
+            "data": {
+                "SECONDS_PER_SLOT": interval.to_string()
+            }
+        }))
+        .into_response(),
+        None => BeaconError::internal_error().into_response(),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

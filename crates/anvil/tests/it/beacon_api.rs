@@ -9,6 +9,7 @@ use alloy_serde::WithOtherFields;
 use anvil::{NodeConfig, spawn};
 use foundry_evm::hardfork::EthereumHardfork;
 use ssz::Decode;
+use std::time::Duration;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_beacon_api_get_blob_sidecars() {
@@ -257,4 +258,21 @@ async fn test_beacon_api_get_genesis() {
         genesis_response.data.genesis_fork_version,
         FixedBytes::from([0x00, 0x00, 0x00, 0x00])
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_beacon_api_get_spec() {
+    let (_api, handle) =
+        spawn(NodeConfig::test().with_blocktime(Some(Duration::from_secs(4)))).await;
+
+    let response: serde_json::Value = reqwest::Client::new()
+        .get(format!("{}/eth/v1/config/spec", handle.http_endpoint()))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(response, serde_json::json!({ "data": { "SECONDS_PER_SLOT": "4" } }));
 }
