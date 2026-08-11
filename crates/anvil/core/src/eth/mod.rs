@@ -290,6 +290,10 @@ pub enum EthRequest {
     #[serde(rename = "debug_getRawTransaction", with = "sequence")]
     DebugGetRawTransaction(TxHash),
 
+    /// geth's `debug_getRawHeader` endpoint
+    #[serde(rename = "debug_getRawHeader", with = "sequence")]
+    DebugGetRawHeader(BlockId),
+
     /// geth's `debug_traceTransaction`  endpoint
     #[serde(rename = "debug_traceTransaction")]
     DebugTraceTransaction(B256, #[serde(default)] GethDebugTracingOptions),

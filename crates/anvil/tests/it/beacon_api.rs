@@ -1,13 +1,17 @@
 use crate::utils::http_provider;
-use alloy_consensus::{Blob, BlobTransactionSidecar, SidecarBuilder, SimpleCoder, Transaction};
+use alloy_consensus::{
+    Blob, BlobTransactionSidecar, Header, SidecarBuilder, SimpleCoder, Transaction,
+};
 use alloy_network::{TransactionBuilder, TransactionBuilder4844};
-use alloy_primitives::{B256, FixedBytes, U256, b256};
+use alloy_primitives::{B256, Bytes, FixedBytes, U256, b256};
 use alloy_provider::Provider;
-use alloy_rpc_types::TransactionRequest;
+use alloy_rlp::Decodable;
+use alloy_rpc_types::{BlockNumberOrTag, TransactionRequest};
 use alloy_rpc_types_beacon::{genesis::GenesisResponse, sidecar::GetBlobsResponse};
 use alloy_serde::WithOtherFields;
 use anvil::{NodeConfig, spawn};
 use foundry_evm::hardfork::EthereumHardfork;
+use serde_json::json;
 use ssz::Decode;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -257,4 +261,45 @@ async fn test_beacon_api_get_genesis() {
         genesis_response.data.genesis_fork_version,
         FixedBytes::from([0x00, 0x00, 0x00, 0x00])
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_debug_get_raw_header() {
+    let (_api, handle) = spawn(NodeConfig::test()).await;
+    let provider = http_provider(&handle.http_endpoint());
+    let block = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    let raw_header_response: serde_json::Value = reqwest::Client::new()
+        .post(handle.http_endpoint())
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "debug_getRawHeader",
+            "params": ["latest"]
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let raw_header: Bytes = serde_json::from_value(raw_header_response["result"].clone()).unwrap();
+    let header = Header::decode(&mut raw_header.as_ref()).unwrap();
+
+    assert_eq!(header.hash_slow(), block.header.hash);
+
+    let unavailable_response: serde_json::Value = reqwest::Client::new()
+        .post(handle.http_endpoint())
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "debug_getRawHeader",
+            "params": ["0xffffff"]
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(unavailable_response["result"].is_null());
 }
