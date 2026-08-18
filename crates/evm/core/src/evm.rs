@@ -30,7 +30,7 @@ use revm::{
     inspector::{InspectorEvmTr, InspectorHandler},
     interpreter::{
         CallInput, CallInputs, CallOutcome, CallScheme, CallValue, CreateInputs, CreateOutcome,
-        FrameInput, Gas, InstructionResult, InterpreterResult, SharedMemory,
+        FrameInput, Gas, GasTracker, InstructionResult, InterpreterResult, SharedMemory,
         interpreter::EthInterpreter, interpreter_action::FrameInit, return_ok,
     },
     precompile::{PrecompileSpecId, Precompiles},
@@ -175,7 +175,6 @@ impl<'db, I: InspectorExt> FoundryEvm<'db, I> {
         frame: FrameInput,
     ) -> Result<FrameResult, EVMError<DatabaseError>> {
         let mut handler = FoundryHandler::<I>::default();
-        let original_reservoir = frame.reservoir();
 
         // Create first frame
         let memory =
@@ -186,7 +185,12 @@ impl<'db, I: InspectorExt> FoundryEvm<'db, I> {
         let mut frame_result = handler.inspect_run_exec_loop(&mut self.inner, first_frame_input)?;
 
         // Handle last frame result
-        handler.last_frame_result(&mut self.inner, original_reservoir, &mut frame_result)?;
+        let mut parent_gas = GasTracker::new(
+            frame_result.gas().limit(),
+            frame_result.gas().remaining(),
+            frame_result.gas().reservoir(),
+        );
+        handler.last_frame_result(&mut self.inner, &mut frame_result, &mut parent_gas)?;
 
         Ok(frame_result)
     }
@@ -409,7 +413,7 @@ impl<'db, I: InspectorExt> FoundryHandler<'db, I> {
                 _ => None,
             };
 
-            FrameResult::Create(CreateOutcome { result: call.result, address })
+            FrameResult::Create(CreateOutcome::new(call.result, address))
         } else {
             result
         }

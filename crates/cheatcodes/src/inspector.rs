@@ -1659,10 +1659,10 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
             let output = input.init_code();
 
             // Return a revert with the initcode as error data
-            return Some(CreateOutcome {
-                result: InterpreterResult { result: InstructionResult::Revert, output, gas },
-                address: None,
-            });
+            return Some(CreateOutcome::new(
+                InterpreterResult { result: InstructionResult::Revert, output, gas },
+                None,
+            ));
         }
 
         let curr_depth = ecx.journaled_state.depth();
@@ -1704,14 +1704,14 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for Cheatcodes {
         {
             let (db, journal, _) = ecx.as_db_env_and_journal();
             if let Err(err) = journal.load_account(db, broadcast.new_origin) {
-                return Some(CreateOutcome {
-                    result: InterpreterResult {
+                return Some(CreateOutcome::new(
+                    InterpreterResult {
                         result: InstructionResult::Revert,
                         output: Error::encode(err),
                         gas,
                     },
-                    address: None,
-                });
+                    None,
+                ));
             }
 
             ecx.tx.caller = broadcast.new_origin;
