@@ -241,5 +241,5 @@ fn systemtime_strftime<T>(dt: T, format: &str) -> Result<String>
 where
     T: Into<OffsetDateTime>,
 {
-    Ok(dt.into().format(&format_description::parse(format)?)?)
+    Ok(dt.into().format(&format_description::parse_borrowed::<1>(format)?)?)
 }
