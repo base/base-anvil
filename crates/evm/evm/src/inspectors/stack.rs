@@ -1088,7 +1088,7 @@ impl Inspector<EthEvmContext<&mut dyn DatabaseExt>> for InspectorStackRefMut<'_>
                 create.gas_limit(),
                 create.value(),
             );
-            return Some(CreateOutcome { result, address });
+            return Some(CreateOutcome::new(result, address));
         }
 
         None

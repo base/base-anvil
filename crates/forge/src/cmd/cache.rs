@@ -6,7 +6,6 @@ use clap::{
 use eyre::Result;
 use foundry_config::{Chain, Config, NamedChain, cache};
 use std::{ffi::OsStr, str::FromStr};
-use strum::VariantNames;
 
 /// CLI arguments for `forge cache`.
 #[derive(Debug, Parser)]
@@ -173,7 +172,7 @@ impl TypedValueParser for ChainOrAllValueParser {
 }
 
 fn possible_chains() -> PossibleValuesParser {
-    Some(&"all").into_iter().chain(NamedChain::VARIANTS).into()
+    Some(&"all").into_iter().chain(NamedChain::VARIANT_NAMES).into()
 }
 
 #[cfg(test)]
