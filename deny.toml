@@ -7,8 +7,6 @@ yanked = "warn"
 ignore = [
     # https://rustsec.org/advisories/RUSTSEC-2024-0436 paste! is unmaintained
     "RUSTSEC-2024-0436",
-    # https://rustsec.org/advisories/RUSTSEC-2025-0141 bincode is unmaintained
-    "RUSTSEC-2025-0141",
     # proc-macro-error2 is currently still pulled in through alloy's proc-macro stack.
     "RUSTSEC-2026-0173",
     # quick-xml <0.41 DoS advisories (quadratic dup-attr check / unbounded namespace
@@ -51,6 +49,7 @@ allow = [
     "Apache-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    "BlueOak-1.0.0",
     "BSL-1.0",
     "CC0-1.0",
     "CDDL-1.0",
