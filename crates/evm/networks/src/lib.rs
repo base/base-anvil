@@ -195,8 +195,8 @@ impl NetworkConfigs {
             // Cobalt adds the transaction-context and nonce-manager singleton
             // precompiles. Neither is observed, by design (metrics are scoped to
             // the B-20 token call path).
-            TxContext::install(precompiles);
-            NonceManager::install(precompiles);
+            TxContext::install(precompiles, upgrade);
+            NonceManager::install(precompiles, upgrade);
         }
     }
 
