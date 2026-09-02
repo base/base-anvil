@@ -11,6 +11,10 @@ ignore = [
     "RUSTSEC-2025-0141",
     # proc-macro-error2 is currently still pulled in through alloy's proc-macro stack.
     "RUSTSEC-2026-0173",
+    # https://rustsec.org/advisories/RUSTSEC-2025-0172 zip-extract is unmaintained.
+    # Pulled in transitively via soldeer-core =0.10.0 (also present in 0.11.0);
+    # not directly reachable in our dep tree. Remove once soldeer-core drops it.
+    "RUSTSEC-2025-0172",
     # quick-xml <0.41 DoS advisories (quadratic dup-attr check / unbounded namespace
     # allocation). Pulled in transitively; foundry's dep tree still pins quick-xml
     # <0.41, so the fix (>=0.41.0) isn't reachable via `cargo update`. Not exploitable
