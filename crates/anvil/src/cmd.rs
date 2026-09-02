@@ -877,8 +877,7 @@ mod tests {
 
     #[test]
     fn cant_parse_invalid_base_upgrade() {
-        let result =
-            NodeArgs::try_parse_from(["anvil", "--base", "not-a-real-upgrade"]);
+        let result = NodeArgs::try_parse_from(["anvil", "--base", "not-a-real-upgrade"]);
         assert!(result.is_err());
     }
 

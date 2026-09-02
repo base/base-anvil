@@ -78,19 +78,14 @@ mod base_flag {
         Name(String),
     }
 
-    pub fn serialize<S: Serializer>(
-        value: &Option<BaseUpgrade>,
-        s: S,
-    ) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(value: &Option<BaseUpgrade>, s: S) -> Result<S::Ok, S::Error> {
         match value {
             None => s.serialize_bool(false),
             Some(upgrade) => s.serialize_str(&upgrade.to_string()),
         }
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(
-        d: D,
-    ) -> Result<Option<BaseUpgrade>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<BaseUpgrade>, D::Error> {
         match Repr::deserialize(d)? {
             Repr::Bool(false) => Ok(None),
             Repr::Bool(true) => Ok(Some(DEFAULT_BASE_UPGRADE)),
