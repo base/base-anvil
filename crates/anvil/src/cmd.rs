@@ -846,6 +846,42 @@ mod tests {
     }
 
     #[test]
+    fn can_parse_bare_base_flag() {
+        let args: NodeArgs = NodeArgs::parse_from(["anvil", "--base"]);
+        assert_eq!(
+            args.evm.networks.base_upgrade(),
+            Some(foundry_evm_networks::BaseUpgrade::Cobalt)
+        );
+    }
+
+    #[test]
+    fn can_parse_base_flag_with_upgrade() {
+        let args: NodeArgs = NodeArgs::parse_from(["anvil", "--base", "beryl"]);
+        assert_eq!(
+            args.evm.networks.base_upgrade(),
+            Some(foundry_evm_networks::BaseUpgrade::Beryl)
+        );
+
+        let args: NodeArgs = NodeArgs::parse_from(["anvil", "--base", "cobalt"]);
+        assert_eq!(
+            args.evm.networks.base_upgrade(),
+            Some(foundry_evm_networks::BaseUpgrade::Cobalt)
+        );
+    }
+
+    #[test]
+    fn base_flag_defaults_to_none_when_absent() {
+        let args: NodeArgs = NodeArgs::parse_from(["anvil"]);
+        assert_eq!(args.evm.networks.base_upgrade(), None);
+    }
+
+    #[test]
+    fn cant_parse_invalid_base_upgrade() {
+        let result = NodeArgs::try_parse_from(["anvil", "--base", "not-a-real-upgrade"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn cant_parse_invalid_hardfork() {
         let args: NodeArgs = NodeArgs::parse_from(["anvil", "--hardfork", "Regolith"]);
         let config = args.into_node_config();

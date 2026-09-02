@@ -13,7 +13,7 @@ use alloy_eips::eip1559::BaseFeeParams;
 use alloy_evm::precompiles::PrecompilesMap;
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use alloy_primitives::{Address, U256, address, keccak256, map::AddressHashMap};
-use base_common_chains::BaseUpgrade;
+pub use base_common_chains::BaseUpgrade;
 use base_common_precompiles::{
     ActivationAdminConfig, ActivationFeature, ActivationRegistry, ActivationRegistryStorage,
     B20Factory, B20FactoryStorage, BerylLookup, NonceManager, NonceManagerStorage,
@@ -54,7 +54,45 @@ const BASE_PRECOMPILE_SENTINEL_ADDRESSES: &[Address] = &[
 const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
     address!("0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc");
 
+/// base-anvil's own current default Base upgrade — the upgrade registered when
+/// `--base` is passed with no value. Deliberately not tied to upstream
+/// `BaseUpgrade::LATEST` (`Beryl`), which lags base-anvil's own release
+/// cadence; bump this alongside `./script/bump-base.sh` as new upgrades land.
+const DEFAULT_BASE_UPGRADE: BaseUpgrade = BaseUpgrade::Cobalt;
+
 pub mod celo;
+
+/// Serde support for the `base` field that keeps accepting the historical
+/// `base = true`/`base = false` shape in `foundry.toml`, while also accepting
+/// `base = "beryl"` to pin a specific historical upgrade. Mirrors the CLI's
+/// `--base`/`--base <upgrade>` duality (see the `base` field below).
+mod base_flag {
+    use super::{BaseUpgrade, DEFAULT_BASE_UPGRADE};
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::str::FromStr;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Repr {
+        Bool(bool),
+        Name(String),
+    }
+
+    pub fn serialize<S: Serializer>(value: &Option<BaseUpgrade>, s: S) -> Result<S::Ok, S::Error> {
+        match value {
+            None => s.serialize_bool(false),
+            Some(upgrade) => s.serialize_str(&upgrade.to_string()),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<BaseUpgrade>, D::Error> {
+        match Repr::deserialize(d)? {
+            Repr::Bool(false) => Ok(None),
+            Repr::Bool(true) => Ok(Some(DEFAULT_BASE_UPGRADE)),
+            Repr::Name(s) => BaseUpgrade::from_str(&s).map(Some).map_err(serde::de::Error::custom),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default, Parser, Copy, Serialize, Deserialize, PartialEq)]
 pub struct NetworkConfigs {
@@ -68,12 +106,22 @@ pub struct NetworkConfigs {
     #[serde(default)]
     celo: bool,
     /// Enable Base custom precompile dispatch (TokenFactory, B-20 tokens,
-    /// PolicyRegistry, ActivationRegistry, TxContext, NonceManager). Required to
-    /// fork-test against chains that host Base's Rust precompiles (vibenet,
-    /// Cobalt-or-later mainnets/testnets).
-    #[arg(help_heading = "Networks", long, conflicts_with = "celo")]
-    #[serde(default)]
-    base: bool,
+    /// PolicyRegistry, ActivationRegistry, TxContext, NonceManager), optionally
+    /// pinned to a specific historical Base upgrade. Bare `--base` uses
+    /// base-anvil's current default upgrade; `--base <upgrade>` (e.g. `--base
+    /// beryl`) selects a specific past upgrade, so one base-anvil revision can
+    /// test the latest `base` precompile implementation against every frozen
+    /// base-std hardfork suite. Required to fork-test against chains that host
+    /// Base's Rust precompiles (vibenet, Cobalt-or-later mainnets/testnets).
+    #[arg(
+        help_heading = "Networks",
+        long,
+        conflicts_with = "celo",
+        num_args(0..=1),
+        default_missing_value = "cobalt", // keep in sync with DEFAULT_BASE_UPGRADE
+    )]
+    #[serde(default, with = "base_flag")]
+    base: Option<BaseUpgrade>,
     /// Override the activation registry admin address. Has no effect unless
     /// `--base` is set. Defaults to the canonical local-dev admin
     /// (`0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc`); override for real-chain
@@ -132,11 +180,23 @@ impl NetworkConfigs {
     }
 
     pub fn is_base(&self) -> bool {
+        self.base.is_some()
+    }
+
+    /// Returns the specific Base upgrade selected via `--base <upgrade>`, or
+    /// `None` if `--base` was not passed at all.
+    pub fn base_upgrade(&self) -> Option<BaseUpgrade> {
         self.base
     }
 
     pub fn with_base() -> Self {
-        Self { base: true, ..Default::default() }
+        Self { base: Some(DEFAULT_BASE_UPGRADE), ..Default::default() }
+    }
+
+    /// Like [`Self::with_base`], but pins a specific historical Base upgrade
+    /// instead of `DEFAULT_BASE_UPGRADE`.
+    pub fn with_base_upgrade(upgrade: BaseUpgrade) -> Self {
+        Self { base: Some(upgrade), ..Default::default() }
     }
 
     /// Returns the activation admin address that will be configured on the
@@ -152,9 +212,10 @@ impl NetworkConfigs {
         }
         // Auto-enable Base for Base mainnet (8453), Base Sepolia (84532), and
         // vibenet (84538453). Users targeting other Base-derived chains can
-        // pass `--base` explicitly.
+        // pass `--base` explicitly. `.or(..)` preserves an explicit `--base
+        // <upgrade>` selection instead of clobbering it with the default.
         if matches!(chain_id, 8453 | 84532 | 84538453) {
-            self.base = true;
+            self.base = self.base.or(Some(DEFAULT_BASE_UPGRADE));
         }
         self
     }
@@ -166,20 +227,19 @@ impl NetworkConfigs {
                 Some(celo::transfer::precompile())
             });
         }
-        if self.base {
+        if let Some(upgrade) = self.base {
             // Mirrors `BasePrecompiles::install_with_observer` for the Cobalt
             // upgrade in base/base/crates/common/precompiles/src/provider.rs.
             // The Beryl-and-later singletons plus the versioned B-20 prefix
             // dispatcher, and the Cobalt-and-later precompiles below.
             // `BerylLookup::install` owns the dispatcher and threads the Base
             // upgrade so each B-20 token resolves its logic version per-call.
-            // Pinned to Cobalt until `--base-fork` (BOP-428) makes the fork
-            // selectable at runtime.
+            // The upgrade is selected via `--base <upgrade>`, defaulting to
+            // `DEFAULT_BASE_UPGRADE` when `--base` is passed bare.
             //
             // Factory/policy take a no-op observer: metrics observation is
             // scoped to the B-20 token call path, which anvil does not wire up.
             let admin = Some(self.base_activation_admin());
-            let upgrade = BaseUpgrade::Cobalt;
             B20Factory::install_with_observer(precompiles, upgrade, NoopPrecompileCallObserver);
             BerylLookup::install(precompiles, upgrade);
             PolicyRegistryPrecompile::install(precompiles, upgrade);
@@ -206,7 +266,7 @@ impl NetworkConfigs {
         if self.celo {
             labels.insert(CELO_TRANSFER_ADDRESS, CELO_TRANSFER_LABEL.to_string());
         }
-        if self.base {
+        if self.is_base() {
             labels.insert(BASE_TOKEN_FACTORY_ADDRESS, "BaseTokenFactory".to_string());
             labels.insert(BASE_POLICY_REGISTRY_ADDRESS, "BasePolicyRegistry".to_string());
             labels.insert(ActivationRegistryStorage::ADDRESS, "BaseActivationRegistry".to_string());
@@ -223,7 +283,7 @@ impl NetworkConfigs {
             precompiles
                 .insert(PRECOMPILE_ID_CELO_TRANSFER.name().to_string(), CELO_TRANSFER_ADDRESS);
         }
-        if self.base {
+        if self.is_base() {
             precompiles.insert("BaseTokenFactory".to_string(), BASE_TOKEN_FACTORY_ADDRESS);
             precompiles.insert("BasePolicyRegistry".to_string(), BASE_POLICY_REGISTRY_ADDRESS);
             precompiles
@@ -239,7 +299,7 @@ impl NetworkConfigs {
     /// intentionally excluded because they are handled by the shared prefix
     /// dispatcher instead of individual singleton sentinels.
     pub fn base_precompile_sentinel_addresses(&self) -> &'static [Address] {
-        if self.base { BASE_PRECOMPILE_SENTINEL_ADDRESSES } else { &[] }
+        if self.is_base() { BASE_PRECOMPILE_SENTINEL_ADDRESSES } else { &[] }
     }
 
     /// `(address, slot, value)` writes that mark Base's activation-gated
@@ -254,7 +314,7 @@ impl NetworkConfigs {
     /// to `0x43ee..cce00`), and each feature flag sits at the Solidity mapping
     /// slot `keccak256(feature_id ‖ root)`.
     pub fn base_activation_seeds(&self) -> Vec<(Address, U256, U256)> {
-        if !self.base {
+        if !self.is_base() {
             return Vec::new();
         }
         // ERC-7201 root: keccak256(abi.encode(uint256(keccak256(id)) - 1)) & ~0xff.
@@ -278,5 +338,44 @@ impl NetworkConfigs {
             (ActivationRegistryStorage::ADDRESS, slot, U256::ONE)
         })
         .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_missing_value_matches_default_base_upgrade() {
+        // Guards against the CLI's `default_missing_value = "cobalt"` string
+        // literal drifting from `DEFAULT_BASE_UPGRADE`, since clap can't
+        // reference the constant directly.
+        assert_eq!("cobalt".parse::<BaseUpgrade>().unwrap(), DEFAULT_BASE_UPGRADE);
+    }
+
+    #[test]
+    fn base_flag_serde_round_trip() {
+        assert_eq!(NetworkConfigs::default().base_upgrade(), None);
+        assert_eq!(NetworkConfigs::with_base().base_upgrade(), Some(DEFAULT_BASE_UPGRADE));
+
+        let disabled: NetworkConfigs = serde_json::from_str(r#"{"base": false}"#).unwrap();
+        assert_eq!(disabled.base_upgrade(), None);
+        assert_eq!(serde_json::to_value(disabled).unwrap()["base"], serde_json::json!(false));
+
+        let default_on: NetworkConfigs = serde_json::from_str(r#"{"base": true}"#).unwrap();
+        assert_eq!(default_on.base_upgrade(), Some(DEFAULT_BASE_UPGRADE));
+
+        let pinned: NetworkConfigs = serde_json::from_str(r#"{"base": "beryl"}"#).unwrap();
+        assert_eq!(pinned.base_upgrade(), Some(BaseUpgrade::Beryl));
+        assert_eq!(serde_json::to_value(pinned).unwrap()["base"], serde_json::json!("Beryl"));
+    }
+
+    #[test]
+    fn with_chain_id_preserves_explicit_base_upgrade() {
+        let networks = NetworkConfigs::with_base_upgrade(BaseUpgrade::Beryl).with_chain_id(8453);
+        assert_eq!(networks.base_upgrade(), Some(BaseUpgrade::Beryl));
+
+        let networks = NetworkConfigs::default().with_chain_id(8453);
+        assert_eq!(networks.base_upgrade(), Some(DEFAULT_BASE_UPGRADE));
     }
 }

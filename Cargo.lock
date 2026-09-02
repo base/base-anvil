@@ -5635,6 +5635,7 @@ dependencies = [
  "clap",
  "revm",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
