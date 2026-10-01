@@ -66,6 +66,19 @@ timestamp before enabling mining; do not move Beacon genesis to hide the gap. Ex
 are bounded to year 9999. Transaction-body pruning is incompatible with retaining local blobs.
 Safe/finalized tags remain Anvil's simulated block-depth policy, not Ethereum finality.
 
+Use `--state <file>` for graceful shutdown and resume, with the same explicit fork block, chain ID,
+Beacon genesis/slot duration, and `--slots-in-an-epoch`. Incompatible identity or incomplete local
+header history is rejected before loading. Beacon dumps require Beacon mode on resume.
+Legacy dumps remain readable outside Beacon-backed mode;
+they cannot safely resume a Beacon fork because they lack its identity. A live `anvil_loadState`
+in this mode replaces local accounts, blocks and snapshots instead of merging histories. Pause
+mining and drain pending transactions before loading.
+
+The existing block serialization preserves blob sidecars. Dumps contain neither endpoint URLs nor
+clock offsets or pending timestamp overrides. Resume restores time from the canonical tip; the
+orchestrator must reapply connectivity, mining policy and a current aligned timestamp after downtime.
+State files are development checkpoints, not atomic crash recovery across multiple devnet processes.
+
 Everything below is inherited from upstream Foundry and works unchanged; only the Base additions above are specific to this fork.
 
 ---

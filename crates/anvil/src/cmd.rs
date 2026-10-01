@@ -657,7 +657,9 @@ impl PeriodicStateDumper {
         Self { in_progress_dump: None, api, dump_state, preserve_historical_states, interval }
     }
 
-    async fn dump(&self) {
+    async fn dump(mut self) {
+        // The suspended periodic dump may own the mining lock. Drop it before the final dump.
+        self.in_progress_dump = None;
         if let Some(state) = self.dump_state.clone() {
             Self::dump_state(self.api.clone(), state, self.preserve_historical_states).await
         }
@@ -806,6 +808,48 @@ fn duration_from_secs_f64(s: &str) -> Result<Duration, String> {
 mod tests {
     use super::*;
     use std::{env, net::Ipv4Addr};
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn shutdown_cancels_suspended_periodic_dump() {
+        let (api, _handle) = crate::spawn(NodeConfig::test()).await;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        let db_guard = api.backend.get_db().write().await;
+        let mut dumper = PeriodicStateDumper::new(
+            api.clone(),
+            Some(path.clone()),
+            Duration::from_secs(60),
+            false,
+        );
+        dumper.in_progress_dump =
+            Some(Box::pin(PeriodicStateDumper::dump_state(api.clone(), path.clone(), false)));
+        // Suspend the periodic dump after taking the mining lock, while awaiting the database.
+        assert!(futures::poll!(&mut dumper).is_pending());
+        drop(db_guard);
+        tokio::time::timeout(Duration::from_secs(30), dumper.dump()).await.unwrap();
+        let saved = SerializableState::load(&path).unwrap();
+        assert_eq!(saved.best_block_number, Some(api.backend.best_number()));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn dump_waits_for_in_progress_mining() {
+        let (api, _handle) = crate::spawn(NodeConfig::test()).await;
+        let db_guard = api.backend.get_db().write().await;
+        let mut mining = Box::pin(api.backend.mine_block(Vec::new()));
+        assert!(futures::poll!(&mut mining).is_pending());
+        let mut dump = Box::pin(api.serialized_state(false));
+        assert!(futures::poll!(&mut dump).is_pending());
+        drop(db_guard);
+        let (mined, saved) =
+            tokio::time::timeout(Duration::from_secs(30), async { tokio::join!(mining, dump) })
+                .await
+                .unwrap();
+        let saved = saved.unwrap();
+        assert_eq!(saved.best_block_number, Some(mined.block_number));
+        assert_eq!(saved.block.unwrap().number, U256::from(mined.block_number));
+        assert_eq!(saved.blocks.len(), 2);
+        assert!(saved.blocks.iter().any(|block| block.header.number == mined.block_number));
+    }
 
     #[test]
     fn beacon_url_requires_execution_url_and_reaches_config() {

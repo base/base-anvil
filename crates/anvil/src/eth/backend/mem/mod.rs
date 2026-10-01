@@ -7,7 +7,7 @@ use crate::{
     eth::{
         backend::{
             cheats::{CheatEcrecover, CheatsManager},
-            db::{Db, MaybeFullDatabase, SerializableState, StateDb},
+            db::{Db, MaybeFullDatabase, SerializableForkBeacon, SerializableState, StateDb},
             env::Env,
             executor::{ExecutedTransactions, TransactionExecutor},
             fork::ClientFork,
@@ -17,7 +17,7 @@ use crate::{
                 storage::MinedTransactionReceipt,
             },
             notifications::{NewBlockNotification, NewBlockNotifications},
-            time::{TimeManager, utc_from_secs},
+            time::{MAX_BEACON_TIMESTAMP, TimeManager, utc_from_secs},
             validate::TransactionValidator,
         },
         error::{BlockchainError, ErrDetail, InvalidTransactionError},
@@ -526,6 +526,7 @@ impl Backend {
 
     /// Resets the fork to a fresh state
     pub async fn reset_fork(&self, forking: Forking) -> Result<(), BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         if self.node_config.read().await.fork_beacon_url.is_some() {
             return self.reset_beacon_fork(forking).await;
         }
@@ -636,7 +637,6 @@ impl Backend {
     /// Prepares both upstreams before replacing a Beacon-enabled fork. A failed metadata
     /// request must not leave the execution database on a different fork from the slot schedule.
     async fn reset_beacon_fork(&self, forking: Forking) -> Result<(), BlockchainError> {
-        let _mining_guard = self.mining.lock().await;
         if !self.is_fork() && forking.json_rpc_url.is_none() {
             return Err(RpcError::invalid_params(
                 "Forking not enabled and RPC URL not provided to start forking",
@@ -1037,6 +1037,7 @@ impl Backend {
     ///
     /// Returns the id of the snapshot created.
     pub async fn create_state_snapshot(&self) -> U256 {
+        let _mining_guard = self.mining.lock().await;
         let num = self.best_number();
         let hash = self.best_hash();
         let id = self.db.write().await.snapshot_state();
@@ -1047,6 +1048,7 @@ impl Backend {
 
     /// Reverts the state to the state snapshot identified by the given `id`.
     pub async fn revert_state_snapshot(&self, id: U256) -> Result<bool, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         let block = { self.active_state_snapshots.lock().remove(&id) };
         if let Some((num, hash)) = block {
             let best_block_hash = {
@@ -1088,6 +1090,9 @@ impl Backend {
                 basefee: env.evm_env.block_env.basefee,
                 ..Default::default()
             }
+        } else {
+            // A state load may invalidate backend snapshots while the database still holds them.
+            return Ok(false);
         }
         Ok(self.db.write().await.revert_state(id, RevertStateSnapshotAction::RevertRemove))
     }
@@ -1096,11 +1101,28 @@ impl Backend {
         self.active_state_snapshots.lock().clone().into_iter().collect()
     }
 
+    /// Identity of the original fork boundary, not the current local tip.
+    fn fork_beacon_identity(&self) -> Option<SerializableForkBeacon> {
+        let fork = self.get_fork()?;
+        let config = fork.config.read();
+        let beacon = config.beacon.as_ref()?;
+        Some(SerializableForkBeacon {
+            chain_id: self.env.read().evm_env.cfg_env.chain_id,
+            block_number: config.block_number,
+            block_hash: config.block_hash,
+            timestamp: config.timestamp,
+            genesis: beacon.genesis.clone(),
+            seconds_per_slot: beacon.seconds_per_slot,
+            slots_in_an_epoch: self.slots_in_an_epoch,
+        })
+    }
+
     /// Get the current state.
     pub async fn serialized_state(
         &self,
         preserve_historical_states: bool,
     ) -> Result<SerializableState, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         let at = self.env.read().evm_env.block_env.clone();
         let best_number = self.blockchain.storage.read().best_number;
         let blocks = self.blockchain.storage.read().serialized_blocks();
@@ -1111,17 +1133,18 @@ impl Backend {
             None
         };
 
-        let state = self.db.read().await.dump_state(
-            at,
-            best_number,
-            blocks,
-            transactions,
-            historical_states,
-        )?;
-        state.ok_or_else(|| {
-            RpcError::invalid_params("Dumping state not supported with the current configuration")
-                .into()
-        })
+        let mut state = self
+            .db
+            .read()
+            .await
+            .dump_state(at, best_number, blocks, transactions, historical_states)?
+            .ok_or_else(|| {
+                RpcError::invalid_params(
+                    "Dumping state not supported with the current configuration",
+                )
+            })?;
+        state.fork_beacon = self.fork_beacon_identity();
+        Ok(state)
     }
 
     /// Write all chain data to serialized bytes buffer
@@ -1139,6 +1162,76 @@ impl Backend {
 
     /// Apply [SerializableState] data to the backend storage.
     pub async fn load_state(&self, state: SerializableState) -> Result<bool, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
+        let identity = self.fork_beacon_identity();
+        if state.fork_beacon != identity {
+            return Err(RpcError::invalid_params(
+                "State dump Beacon identity does not match the configured fork, chain or finality settings",
+            ).into());
+        }
+        let mut boundary_header = None;
+        if let Some(identity) = identity {
+            // A Beacon resume is a replacement, unlike the legacy account-merge API. Validate
+            // the entire local chain before discarding anything, including a live node's suffix.
+            let mut headers = state.blocks.iter().map(|block| &block.header).collect::<Vec<_>>();
+            headers.sort_unstable_by_key(|header| header.number);
+            let mut number = identity.block_number;
+            let mut hash = identity.block_hash;
+            let mut timestamp = identity.timestamp;
+            for header in headers {
+                if number.checked_add(1) != Some(header.number)
+                    || header.parent_hash != hash
+                    || header.timestamp <= timestamp
+                    || header.timestamp > MAX_BEACON_TIMESTAMP
+                    || (header.timestamp - identity.genesis.genesis_time)
+                        % identity.seconds_per_slot
+                        != 0
+                {
+                    return Err(RpcError::invalid_params(
+                        "Invalid local Beacon chain in state dump",
+                    )
+                    .into());
+                }
+                number = header.number;
+                hash = header.hash_slow();
+                timestamp = header.timestamp;
+            }
+            if state.best_block_number != Some(number)
+                || state.block.as_ref().is_none_or(|block| {
+                    block.number != U256::from(number) || block.timestamp != U256::from(timestamp)
+                })
+            {
+                return Err(RpcError::invalid_params(
+                    "State dump does not match its canonical Beacon tip",
+                )
+                .into());
+            }
+            let fork = self.get_fork().expect("Beacon identity requires a fork");
+            if state.blocks.is_empty() {
+                // At F the dump has no local body. Obtain its fee inputs before mutating state.
+                boundary_header = Some(
+                    fork.block_by_number(identity.block_number)
+                        .await?
+                        .ok_or(BlockchainError::BlockNotFound)?
+                        .header
+                        .inner
+                        .clone(),
+                );
+            }
+            *self.blockchain.storage.write() = BlockchainStorage::forked(
+                identity.block_number,
+                identity.block_hash,
+                fork.total_difficulty(),
+            );
+            self.states.write().clear();
+            self.active_state_snapshots.lock().clear();
+            let mut db = self.db.write().await;
+            db.clear();
+            db.insert_block_hash(U256::from(identity.block_number), identity.block_hash);
+            for block in &state.blocks {
+                db.insert_block_hash(U256::from(block.header.number), block.header.hash_slow());
+            }
+        }
         // load the blocks and transactions into the storage
         self.blockchain.storage.write().load_blocks(state.blocks.clone());
         self.blockchain.storage.write().load_transactions(state.transactions.clone());
@@ -1188,8 +1281,20 @@ impl Backend {
             }
         }
 
-        if let Some(latest) = state.blocks.iter().max_by_key(|b| b.header.number) {
-            let header = &latest.header;
+        // Restore from the selected canonical head, not the largest imported block or the
+        // original fork timestamp. The fork boundary need not have a locally stored body.
+        let head = self
+            .get_block_by_hash(self.best_hash())
+            .map(|block| AnyHeader::from(block.header))
+            .or(boundary_header);
+        if let Some(timestamp) = head.as_ref().map(|header| header.timestamp).or_else(|| {
+            self.get_fork()
+                .filter(|fork| fork.block_hash() == self.best_hash())
+                .map(|fork| fork.timestamp())
+        }) {
+            self.time.reset(timestamp);
+        }
+        if let Some(header) = head {
             let next_block_base_fee = self.fees.get_next_block_base_fee_per_gas(
                 header.gas_used,
                 header.gas_limit,
@@ -3570,6 +3675,7 @@ impl Backend {
     /// The state of the chain is rewound using `rewind` to the common block, including the db,
     /// storage, and env.
     pub async fn rollback(&self, common_block: Block) -> Result<(), BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         // Get the database at the common block
         let common_state = {
             let return_state_or_throw_err =
