@@ -7,7 +7,7 @@ use std::{sync::Arc, time::Duration};
 
 // Bound development time jumps to year 9999. Mining may continue past this bound,
 // but RPC-controlled offsets must not exhaust u64 or chrono's printable date range.
-const MAX_BEACON_TIMESTAMP: u64 = 253_402_300_799;
+pub(super) const MAX_BEACON_TIMESTAMP: u64 = 253_402_300_799;
 
 /// Returns the `Utc` datetime for the given seconds since unix epoch
 pub fn utc_from_secs(secs: u64) -> DateTime<Utc> {

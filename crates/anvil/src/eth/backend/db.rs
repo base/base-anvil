@@ -12,6 +12,7 @@ use alloy_primitives::{
     map::{AddressMap, HashMap},
 };
 use alloy_rpc_types::BlockId;
+use alloy_rpc_types_beacon::genesis::GenesisData;
 use anvil_core::eth::{
     block::Block,
     transaction::{MaybeImpersonatedTransaction, TransactionInfo},
@@ -486,6 +487,18 @@ where
     Ok(number)
 }
 
+/// Identity required to resume a Beacon-backed fork. Connectivity and mining policy are not state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SerializableForkBeacon {
+    pub chain_id: u64,
+    pub block_number: u64,
+    pub block_hash: B256,
+    pub timestamp: u64,
+    pub genesis: GenesisData,
+    pub seconds_per_slot: u64,
+    pub slots_in_an_epoch: u64,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SerializableState {
     /// The block number of the state
@@ -506,6 +519,9 @@ pub struct SerializableState {
     /// Note: This is an Option for backwards compatibility.
     #[serde(default)]
     pub historical_states: Option<SerializableHistoricalStates>,
+    /// Absent in legacy dumps and when the historical Beacon upstream is not configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork_beacon: Option<SerializableForkBeacon>,
 }
 
 impl SerializableState {
