@@ -539,3 +539,29 @@ async fn beacon_state_boundary_load_restores_fees() {
     assert_eq!(restored["excessBlobGas"], first["excessBlobGas"]);
     assert_eq!(restored["hash"], first["hash"]);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn beacon_state_load_keeps_fork_block_hash_without_upstream() {
+    let fixture = BeaconTargetFixture::spawn().await;
+    let endpoint = fixture.handle.http_endpoint();
+    let boundary = block_at(&endpoint, quantity(BEACON_ORIGIN_BLOCK)).await["hash"].clone();
+    mine_at(&endpoint, ts(21)).await;
+    let dump = fixture.api.anvil_dump_state(None).await.unwrap();
+
+    // Regenerating the origin's genesis with another base fee gives the fork block a new hash.
+    fixture.origin_api.anvil_set_next_block_base_fee_per_gas(U256::from(1)).await.unwrap();
+    fixture.origin_api.anvil_reset(None).await.unwrap();
+    let origin = fixture.origin.http_endpoint();
+    assert_ne!(block_at(&origin, quantity(BEACON_ORIGIN_BLOCK)).await["hash"], boundary);
+
+    fixture.api.anvil_load_state(dump).await.unwrap();
+    let contract = Address::repeat_byte(0x73);
+    let code = format!("0x7f{BEACON_ORIGIN_BLOCK:064x}4060005260206000f3");
+    let evm_hash = rpc_ok(
+        &endpoint,
+        "eth_call",
+        json!([{"to": contract}, "pending", {contract.to_string(): {"code": code}}]),
+    )
+    .await;
+    assert_eq!(evm_hash, boundary, "EVM BLOCKHASH(fork block)");
+}

@@ -1236,6 +1236,7 @@ impl Backend {
             self.active_state_snapshots.lock().clear();
             let mut db = self.db.write().await;
             db.clear();
+            db.insert_block_hash(U256::from(identity.block_number), identity.block_hash);
             for block in &state.blocks {
                 db.insert_block_hash(U256::from(block.header.number), block.header.hash_slow());
             }
