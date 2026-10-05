@@ -359,7 +359,10 @@ impl Backend {
         }
 
         // Note: this can only fail in forking mode, in which case we can't recover
-        backend.apply_genesis().await.wrap_err("failed to create genesis")?;
+        backend
+            .apply_genesis(&backend.db, backend.is_fork())
+            .await
+            .wrap_err("failed to create genesis")?;
         Ok(backend)
     }
 
@@ -411,14 +414,18 @@ impl Backend {
     /// Applies the configured genesis settings
     ///
     /// This will fund, create the genesis accounts
-    async fn apply_genesis(&self) -> Result<(), DatabaseError> {
+    async fn apply_genesis(
+        &self,
+        db: &Arc<AsyncRwLock<Box<dyn Db>>>,
+        forked: bool,
+    ) -> Result<(), DatabaseError> {
         trace!(target: "backend", "setting genesis balances");
 
-        if self.fork.read().is_some() {
+        if forked {
             // fetch all account first
             let mut genesis_accounts_futures = Vec::with_capacity(self.genesis.accounts.len());
             for address in self.genesis.accounts.iter().copied() {
-                let db = Arc::clone(&self.db);
+                let db = Arc::clone(db);
 
                 // The forking Database backend can handle concurrent requests, we can fetch all dev
                 // accounts concurrently by spawning the job to a new task
@@ -431,7 +438,7 @@ impl Backend {
 
             let genesis_accounts = futures::future::join_all(genesis_accounts_futures).await;
 
-            let mut db = self.db.write().await;
+            let mut db = db.write().await;
 
             for res in genesis_accounts {
                 let (address, mut info) = res.unwrap()?;
@@ -439,7 +446,7 @@ impl Backend {
                 db.insert_account(address, info.clone());
             }
         } else {
-            let mut db = self.db.write().await;
+            let mut db = db.write().await;
             for (account, info) in self.genesis.account_infos() {
                 db.insert_account(account, info);
             }
@@ -449,9 +456,8 @@ impl Backend {
             db.insert_block_hash(U256::from(self.best_number()), self.best_hash());
         }
 
-        let db = self.db.write().await;
         // apply the genesis.json alloc
-        self.genesis.apply_genesis_json_alloc(db)?;
+        self.genesis.apply_genesis_json_alloc(db.write().await)?;
 
         // Seed Base's activation-gated features (B20Asset, B20Stablecoin,
         // PolicyRegistry) as active so a standalone `anvil --base` node matches a
@@ -460,10 +466,10 @@ impl Backend {
         // in fork mode, where the live chain already carries real activation state
         // that seeding would clobber. No-op unless `--base` is set
         // (`base_activation_seeds` returns empty otherwise).
-        if self.fork.read().is_none() {
+        if !forked {
             let seeds = self.env.read().networks.base_activation_seeds();
             if !seeds.is_empty() {
-                let mut db = self.db.write().await;
+                let mut db = db.write().await;
                 for (address, slot, value) in seeds {
                     db.set_storage_at(
                         address,
@@ -624,7 +630,7 @@ impl Backend {
             self.states.write().clear();
             self.db.write().await.clear();
 
-            self.apply_genesis().await?;
+            self.apply_genesis(&self.db, self.is_fork()).await?;
 
             trace!(target: "backend", "reset fork");
 
@@ -634,8 +640,8 @@ impl Backend {
         }
     }
 
-    /// Prepares both upstreams before replacing a Beacon-enabled fork. A failed metadata
-    /// request must not leave the execution database on a different fork from the slot schedule.
+    /// Prepares both upstreams before replacing a Beacon-enabled fork. A failed upstream
+    /// read must not leave the execution database on a different fork from the slot schedule.
     /// The caller must hold the mining lock.
     async fn reset_beacon_fork(&self, forking: Forking) -> Result<(), BlockchainError> {
         if !self.is_fork() && forking.json_rpc_url.is_none() {
@@ -664,10 +670,12 @@ impl Backend {
             self.fees.base_fee_params(),
         );
         let (db, fork_config) = config.setup_fork_db_config(url, &mut env, &fees).await?;
+        let db: Arc<AsyncRwLock<Box<dyn Db>>> = Arc::new(AsyncRwLock::new(Box::new(db)));
+        self.apply_genesis(&db, true).await?;
         let beacon = fork_config.beacon.as_ref().expect("Beacon URL is configured");
         self.time.set_beacon_slots(Some((beacon.genesis.genesis_time, beacon.seconds_per_slot)))?;
         self.time.reset(fork_config.timestamp);
-        *self.db.write().await = Box::new(db);
+        std::mem::swap(&mut *self.db.write().await, &mut *db.write().await);
         *self.env.write() = env;
         *self.blockchain.storage.write() = BlockchainStorage::forked(
             fork_config.block_number,
@@ -684,7 +692,6 @@ impl Backend {
         self.states.write().clear();
         self.active_state_snapshots.lock().clear();
         *self.node_config.write().await = config;
-        self.apply_genesis().await?;
         Ok(())
     }
 
@@ -732,7 +739,7 @@ impl Backend {
         self.fees.set_gas_price(crate::eth::fees::INITIAL_GAS_PRICE);
 
         // Reapply genesis configuration
-        self.apply_genesis().await?;
+        self.apply_genesis(&self.db, self.is_fork()).await?;
 
         trace!(target: "backend", "reset to fresh in-memory state");
 

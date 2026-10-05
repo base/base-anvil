@@ -18,14 +18,14 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
 };
 use foundry_evm::hardfork::EthereumHardfork;
 use ssz::Decode;
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -707,4 +707,69 @@ async fn beacon_api_revert_and_reset_follow_canonical_history() {
     fixture.api.anvil_reset(None).await.unwrap();
     fixture.api.evm_set_block_timestamp_interval(5).unwrap();
     fixture.api.evm_mine(None).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn beacon_api_reset_keeps_fork_when_account_reads_fail() {
+    let (origin_api, origin) = spawn(beacon_origin_config()).await;
+    let beacon = MockBeacon::spawn().await;
+    // Execution upstream that serves blocks but can reject account reads, like a pruned node.
+    let fail_accounts = Arc::new(AtomicBool::new(false));
+    let (fail, origin_url) = (Arc::clone(&fail_accounts), origin.http_endpoint());
+    let proxy = Router::new().route(
+        "/",
+        post(move |Json(request): Json<serde_json::Value>| {
+            let (fail, origin_url) = (Arc::clone(&fail), origin_url.clone());
+            async move {
+                let method = request["method"].as_str().unwrap_or_default();
+                let account_read =
+                    matches!(method, "eth_getBalance" | "eth_getTransactionCount" | "eth_getCode");
+                if account_read && fail.load(Ordering::Relaxed) {
+                    let error = serde_json::json!({ "code": -32000, "message": "missing trie node" });
+                    return Json(serde_json::json!({ "jsonrpc": "2.0", "id": request["id"], "error": error }));
+                }
+                let response = reqwest::Client::new().post(origin_url).json(&request).send().await;
+                Json(response.unwrap().json::<serde_json::Value>().await.unwrap())
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, proxy).await.unwrap() });
+    let (api, handle) = spawn(beacon_target_config(proxy_url, beacon.url.clone())).await;
+    let fixture = BeaconTargetFixture { origin_api, origin, beacon, api, handle };
+    let endpoint = fixture.handle.http_endpoint();
+    let provider = http_provider(&endpoint);
+    let dev = fixture.handle.dev_accounts().next().unwrap();
+
+    let snapshot = fixture.api.evm_snapshot().await.unwrap();
+    fixture.mine_blob_block(1252, &BEACON_LOCAL_BLOB_DATA).await;
+    fixture.api.evm_set_next_block_timestamp(beacon_slot_timestamp(30)).unwrap();
+    let head = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    let blobs = beacon_blobs_json(&endpoint, "21").await;
+    let balance = provider.get_balance(dev).await.unwrap();
+    assert_eq!(provider.get_transaction_count(dev).await.unwrap(), 2);
+
+    fail_accounts.store(true, Ordering::Relaxed);
+    fixture.beacon.state.seconds_per_slot.store(6, Ordering::Relaxed);
+    let reset = Forking { json_rpc_url: None, block_number: Some(BEACON_ORIGIN_BLOCK) };
+    assert!(fixture.api.anvil_reset(Some(reset)).await.is_err());
+    fail_accounts.store(false, Ordering::Relaxed);
+
+    let kept = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    assert_eq!(kept.header.hash, head.header.hash);
+    assert_blobs_eq(&beacon_blobs_json(&endpoint, "21").await, &blobs, "slot 21 after reset");
+    assert_eq!(provider.get_balance(dev).await.unwrap(), balance);
+    assert_eq!(provider.get_transaction_count(dev).await.unwrap(), 2);
+    let spec = reqwest::get(format!("{endpoint}/eth/v1/config/spec")).await.unwrap();
+    let spec = spec.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(spec["data"]["SECONDS_PER_SLOT"], BEACON_SECONDS_PER_SLOT.to_string());
+    fixture.api.evm_mine(None).await.unwrap();
+    let next = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    assert_eq!(
+        (next.header.number, next.header.timestamp),
+        (head.header.number + 1, beacon_slot_timestamp(30))
+    );
+    assert!(fixture.api.evm_revert(snapshot).await.unwrap());
+    assert_eq!(fixture.api.block_number().unwrap(), U256::from(BEACON_ORIGIN_BLOCK));
 }
