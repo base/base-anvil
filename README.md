@@ -76,7 +76,9 @@ load legacy dumps but reject Beacon dumps. A Beacon load, including a live `anvi
 replaces local accounts, blocks and snapshots instead of merging histories; pause mining and drain
 pending transactions first. Clock and fees resume from the canonical tip. Dumps contain neither
 endpoint URLs nor clock offsets or pending timestamp overrides, so an orchestrator must reapply
-connectivity, mining policy and a current aligned timestamp after downtime.
+connectivity, mining policy and a current aligned timestamp after downtime. SIGTERM writes the
+final `--state` dump; state files are development checkpoints, not atomic crash recovery across
+multiple devnet processes.
 
 Everything below is inherited from upstream Foundry and works unchanged; only the Base additions above are specific to this fork.
 

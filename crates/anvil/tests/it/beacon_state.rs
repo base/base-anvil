@@ -606,3 +606,337 @@ async fn beacon_state_load_keeps_boundary_hash_without_upstream() {
     .await;
     assert_eq!(evm_hash, boundary, "EVM BLOCKHASH(fork block)");
 }
+
+/// Graceful `--state` restarts of the CLI.
+#[cfg(unix)]
+mod process {
+    use super::*;
+    use crate::beacon_api::{
+        MockBeacon, assert_blobs_eq, beacon_blobs_json, beacon_blobs_ssz, beacon_origin_config,
+    };
+    use alloy_consensus::Blob;
+    use std::{
+        fs::File,
+        path::{Path, PathBuf},
+        process::{Child, Command, ExitStatus, Stdio},
+    };
+
+    /// Bound on a CLI child reaching `Listening on` or exiting.
+    const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
+    /// Bound on a CLI child exiting after SIGTERM, including its state dump.
+    const EXIT_TIMEOUT: Duration = Duration::from_secs(30);
+    /// Bound on a whole restart scenario; dropping it kills any live child.
+    const SCENARIO_TIMEOUT: Duration = Duration::from_secs(300);
+    const POLL_INTERVAL: Duration = Duration::from_millis(100);
+    /// Non-default epoch length, so safe and finalized sit one and two blocks below the tip.
+    const SLOTS_IN_AN_EPOCH: u64 = 1;
+    /// Payload of the single local blob mined at slot 24.
+    const SLOT_24_BLOB_DATA: &[u8] = b"local slot 24 blob";
+
+    /// Anvil CLI child process. It is killed on drop, so a panicking test leaves no process
+    /// behind.
+    struct AnvilChild {
+        child: Child,
+        log: PathBuf,
+    }
+
+    /// How a CLI child finished starting.
+    enum Startup {
+        Ready(String),
+        Exited(ExitStatus),
+    }
+
+    impl AnvilChild {
+        fn spawn(args: &[String], dir: &Path, log_name: &str) -> Self {
+            let log = dir.join(log_name);
+            let file = File::create(&log).unwrap();
+            let child = Command::new(env!("CARGO_BIN_EXE_anvil"))
+                .args(args)
+                .current_dir(dir)
+                .stdin(Stdio::null())
+                .stdout(file.try_clone().unwrap())
+                .stderr(file)
+                .spawn()
+                .unwrap();
+            Self { child, log }
+        }
+
+        /// Waits until the child prints its bound address or exits.
+        async fn startup(&mut self) -> Startup {
+            let deadline = Instant::now() + STARTUP_TIMEOUT;
+            loop {
+                let log = std::fs::read_to_string(&self.log).unwrap_or_default();
+                let address = log
+                    .split_inclusive('\n')
+                    .filter(|line| line.ends_with('\n'))
+                    .find_map(|line| line.trim().strip_prefix("Listening on "))
+                    .map(|addresses| addresses.split(", ").next().unwrap().to_string());
+                if let Some(address) = address {
+                    return Startup::Ready(format!("http://{address}"));
+                }
+                if let Some(status) = self.child.try_wait().unwrap() {
+                    return Startup::Exited(status);
+                }
+                assert!(Instant::now() < deadline, "anvil did not start:\n{}", self.log_tail());
+                tokio::time::sleep(POLL_INTERVAL).await;
+            }
+        }
+
+        async fn ready(&mut self) -> String {
+            match self.startup().await {
+                Startup::Ready(endpoint) => endpoint,
+                Startup::Exited(status) => {
+                    panic!("anvil exited during startup with {status}:\n{}", self.log_tail())
+                }
+            }
+        }
+
+        /// Sends SIGTERM and waits for a successful exit, which includes the `--state` dump.
+        async fn terminate(&mut self) {
+            let pid = self.child.id().to_string();
+            assert!(Command::new("kill").args(["-TERM", &pid]).status().unwrap().success());
+            let deadline = Instant::now() + EXIT_TIMEOUT;
+            let status = loop {
+                if let Some(status) = self.child.try_wait().unwrap() {
+                    break status;
+                }
+                assert!(Instant::now() < deadline, "anvil ignored SIGTERM:\n{}", self.log_tail());
+                tokio::time::sleep(POLL_INTERVAL).await;
+            };
+            assert!(status.success(), "anvil exited with {status}:\n{}", self.log_tail());
+        }
+
+        fn log_tail(&self) -> String {
+            let log = std::fs::read_to_string(&self.log).unwrap_or_default();
+            let lines = log.lines().collect::<Vec<_>>();
+            lines[lines.len().saturating_sub(20)..]
+                .iter()
+                .map(|line| line.chars().take(300).collect::<String>())
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    }
+
+    impl Drop for AnvilChild {
+        fn drop(&mut self) {
+            if matches!(self.child.try_wait(), Ok(None)) {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+            }
+        }
+    }
+
+    /// CLI arguments for a Beacon-backed target pinned to `fork_block` that persists to `state`.
+    fn cli_args(
+        origin: &str,
+        beacon: &str,
+        state: &Path,
+        fork_block: u64,
+        slots_in_an_epoch: u64,
+    ) -> Vec<String> {
+        [
+            "--port",
+            "0",
+            "--fork-url",
+            origin,
+            "--fork-block-number",
+            &fork_block.to_string(),
+            "--fork-beacon-url",
+            beacon,
+            "--no-storage-caching",
+            "--hardfork",
+            "cancun",
+            "--no-mining",
+            "--slots-in-an-epoch",
+            &slots_in_an_epoch.to_string(),
+            "--state-interval",
+            "3600",
+            "--state",
+            state.to_str().unwrap(),
+        ]
+        .map(String::from)
+        .to_vec()
+    }
+
+    async fn first_account(endpoint: &str) -> Address {
+        let accounts = rpc_ok(endpoint, "eth_accounts", json!([])).await;
+        serde_json::from_value(accounts[0].clone()).unwrap()
+    }
+
+    /// Asserts a blob query returns exactly `expected` as JSON and as SSZ.
+    async fn assert_blobs(endpoint: &str, query: &str, expected: &[Blob]) {
+        assert_blobs_eq(&beacon_blobs_json(endpoint, query).await, expected, query);
+        assert_blobs_eq(&beacon_blobs_ssz(endpoint, query).await, expected, query);
+    }
+
+    fn blobs(sent: &[(B256, BlobTransactionSidecar)]) -> Vec<Blob> {
+        sent.iter().map(|(_, sidecar)| sidecar.blobs[0]).collect()
+    }
+
+    /// Asserts `latest`, `safe`, and `finalized` resolve 0, 1, and 2 epochs below `tip` for
+    /// blocks, block receipts and fee history.
+    async fn assert_tags(endpoint: &str, tip: u64) {
+        for (tag, depth) in
+            [("latest", 0), ("safe", SLOTS_IN_AN_EPOCH), ("finalized", 2 * SLOTS_IN_AN_EPOCH)]
+        {
+            let number = quantity(tip - depth);
+            let tagged = block_at(endpoint, json!(tag)).await;
+            assert_eq!(tagged, block_at(endpoint, number.clone()).await, "{tag} block");
+            let receipts = |id| rpc_ok(endpoint, "eth_getBlockReceipts", json!([id]));
+            assert_eq!(receipts(json!(tag)).await, receipts(number).await, "{tag} receipts");
+            let history = rpc_ok(endpoint, "eth_feeHistory", json!(["0x1", tag, []])).await;
+            assert_eq!(json_u64(&history["oldestBlock"]), tip - depth, "{tag} fee history");
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn beacon_state_graceful_restart_preserves_history_and_resets_clock() {
+        tokio::time::timeout(SCENARIO_TIMEOUT, restart_preserves_history_and_resets_clock())
+            .await
+            .expect("restart scenario timed out");
+    }
+
+    async fn restart_preserves_history_and_resets_clock() {
+        let (origin_api, origin) = spawn(beacon_origin_config()).await;
+        let beacon = MockBeacon::spawn().await;
+        let origin_url = origin.http_endpoint();
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state.json");
+        let args =
+            cli_args(&origin_url, &beacon.url, &state, BEACON_ORIGIN_BLOCK, SLOTS_IN_AN_EPOCH);
+
+        let mut first = AnvilChild::spawn(&args, dir.path(), "first.log");
+        let endpoint = first.ready().await;
+        let from = first_account(&endpoint).await;
+
+        // Competing upstream continuation at the slot the local chain skips.
+        origin_api.evm_mine(Some(MineOptions::Timestamp(Some(ts(22))))).await.unwrap();
+        let competing = block_at(&origin_url, quantity(BEACON_ORIGIN_BLOCK + 1)).await;
+
+        let slot21 = send_blob_txs(&endpoint, from, 0, &BEACON_LOCAL_BLOB_DATA).await;
+        mine_at(&endpoint, ts(21)).await;
+        let slot23 = send_blob_txs(&endpoint, from, 2, &[SLOT_23_BLOB_DATA]).await;
+        mine_at(&endpoint, ts(23)).await;
+        let slot24 = send_blob_txs(&endpoint, from, 3, &[SLOT_24_BLOB_DATA]).await;
+        mine_at(&endpoint, ts(24)).await;
+        let tip = BEACON_ORIGIN_BLOCK + 3;
+
+        let head = block_at(&endpoint, json!("latest")).await;
+        assert_eq!((json_u64(&head["number"]), json_u64(&head["timestamp"])), (tip, ts(24)));
+        assert_ne!(block_at(&endpoint, quantity(tip - 2)).await["hash"], competing["hash"]);
+        assert_blobs(&endpoint, "20", &[beacon.historical_blob()]).await;
+        assert_blobs(&endpoint, "21", &blobs(&slot21)).await;
+        assert_blobs(&endpoint, "23", &blobs(&slot23)).await;
+        assert_blobs(&endpoint, "24", &blobs(&slot24)).await;
+        let second_hash = slot21[1].1.versioned_hashes().next().unwrap();
+        let filtered = format!("21?versioned_hashes={second_hash}");
+        assert_blobs(&endpoint, &filtered, &blobs(&slot21)[1..]).await;
+        for missing in ["22", "25"] {
+            let status = beacon_get(&endpoint, &blobs_path(missing), false).await.0;
+            assert_eq!(status, 404, "slot {missing}");
+        }
+        assert_tags(&endpoint, tip).await;
+
+        let sent = [(21, &slot21[0]), (21, &slot21[1]), (23, &slot23[0]), (24, &slot24[0])];
+        let tx_hashes = sent.iter().map(|(_, (hash, _))| *hash).collect::<Vec<_>>();
+        let paths = beacon_paths(&sent, 25);
+        let blocks = (BEACON_ORIGIN_BLOCK..=tip).collect::<Vec<_>>();
+        let before = snapshot(&endpoint, &blocks, &tx_hashes, &paths).await;
+
+        // Pending clock overrides are process state and must not survive the restart.
+        rpc_ok(&endpoint, "evm_setTime", json!([ts(10_000)])).await;
+        rpc_ok(&endpoint, "evm_setNextBlockTimestamp", json!([ts(20_000)])).await;
+        first.terminate().await;
+
+        let started = Instant::now();
+        let mut second = AnvilChild::spawn(&args, dir.path(), "second.log");
+        let endpoint = second.ready().await;
+
+        let restarted = block_at(&endpoint, json!("latest")).await;
+        assert_eq!(restarted, head, "restarted tip");
+        assert_tags(&endpoint, tip).await;
+        assert_same(&before, &snapshot(&endpoint, &blocks, &tx_hashes, &paths).await, "restart");
+        let competing_lookup =
+            rpc_ok(&endpoint, "eth_getBlockByHash", json!([competing["hash"], false]));
+        assert!(competing_lookup.await.is_null(), "served the upstream post-boundary block");
+
+        rpc_ok(&endpoint, "evm_mine", json!([])).await;
+        let next = block_at(&endpoint, json!("latest")).await;
+        assert_eq!(json_u64(&next["number"]), tip + 1);
+        assert_resumed_timestamp(&next, 24, started);
+        assert_eq!(next["parentHash"], head["hash"]);
+        assert_tags(&endpoint, tip + 1).await;
+
+        let requests = beacon.blob_requests();
+        assert!(requests.iter().all(|id| id == "20"), "post-boundary upstream reads {requests:?}");
+        second.terminate().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn beacon_state_restart_rejects_changed_identity() {
+        tokio::time::timeout(SCENARIO_TIMEOUT, restart_rejects_changed_identity())
+            .await
+            .expect("restart scenario timed out");
+    }
+
+    async fn restart_rejects_changed_identity() {
+        let (origin_api, origin) = spawn(beacon_origin_config()).await;
+        let beacon = MockBeacon::spawn().await;
+        let origin_url = origin.http_endpoint();
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state.json");
+        let args =
+            cli_args(&origin_url, &beacon.url, &state, BEACON_ORIGIN_BLOCK, SLOTS_IN_AN_EPOCH);
+
+        let mut first = AnvilChild::spawn(&args, dir.path(), "first.log");
+        let endpoint = first.ready().await;
+        let from = first_account(&endpoint).await;
+        send_blob_txs(&endpoint, from, 0, &BEACON_LOCAL_BLOB_DATA).await;
+        mine_at(&endpoint, ts(21)).await;
+        let local = block_at(&endpoint, json!("latest")).await;
+        first.terminate().await;
+        // A competing on-grid upstream block that a restart could wrongly pin instead.
+        origin_api.evm_mine(Some(MineOptions::Timestamp(Some(ts(22))))).await.unwrap();
+
+        let dumped_bytes = std::fs::read(&state).unwrap();
+        let dumped: Value = serde_json::from_slice(&dumped_bytes).unwrap();
+        let chain_id = json_u64(&rpc_ok(&origin_url, "eth_chainId", json!([])).await);
+        let boundary = block_at(&origin_url, quantity(BEACON_ORIGIN_BLOCK)).await;
+        assert_identity(&dumped, chain_id, &boundary["hash"], SLOTS_IN_AN_EPOCH);
+        let legacy = dir.path().join("legacy.json");
+        let legacy_bytes = serde_json::to_vec(&without_identity(&dumped)).unwrap();
+        std::fs::write(&legacy, &legacy_bytes).unwrap();
+
+        let variants = [
+            (
+                "competing boundary",
+                cli_args(&origin_url, &beacon.url, &state, 101, SLOTS_IN_AN_EPOCH),
+            ),
+            ("epoch length", cli_args(&origin_url, &beacon.url, &state, BEACON_ORIGIN_BLOCK, 2)),
+            (
+                "missing identity",
+                cli_args(&origin_url, &beacon.url, &legacy, BEACON_ORIGIN_BLOCK, SLOTS_IN_AN_EPOCH),
+            ),
+        ];
+        for (index, (variant, args)) in variants.iter().enumerate() {
+            let mut child = AnvilChild::spawn(args, dir.path(), &format!("variant{index}.log"));
+            match child.startup().await {
+                Startup::Ready(_) => panic!("restart with {variant} must be rejected"),
+                Startup::Exited(status) => {
+                    assert!(!status.success(), "{variant} exited with {status}");
+                    let log = std::fs::read_to_string(&child.log).unwrap();
+                    assert!(log.contains(IDENTITY_MISMATCH), "{}", child.log_tail());
+                }
+            }
+            assert!(std::fs::read(&state).unwrap() == dumped_bytes, "{variant} rewrote the state");
+            let legacy_now = std::fs::read(&legacy).unwrap();
+            assert!(legacy_now == legacy_bytes, "{variant} rewrote legacy state");
+        }
+
+        // The unchanged identity still restarts onto the local history.
+        let mut restarted = AnvilChild::spawn(&args, dir.path(), "restarted.log");
+        let endpoint = restarted.ready().await;
+        assert_eq!(block_at(&endpoint, json!("latest")).await, local);
+        restarted.terminate().await;
+    }
+}
