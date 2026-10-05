@@ -515,29 +515,50 @@ async fn beacon_state_load_replaces_local_history_and_resets_clock() {
 #[tokio::test(flavor = "multi_thread")]
 async fn beacon_state_boundary_load_restores_fees() {
     let fixture = BeaconTargetFixture::spawn().await;
-    let endpoint = fixture.handle.http_endpoint();
-    let from = fixture.handle.dev_accounts().next().unwrap();
-    let boundary_dump = fixture.api.anvil_dump_state(None).await.unwrap();
-    mine_at(&endpoint, ts(21)).await;
-    let first = block_at(&endpoint, json!("latest")).await;
+    // An explicit base fee replaces the one derived from the fork block.
+    for base_fee in [None, Some(7)] {
+        let config = || {
+            beacon_target_config(fixture.origin.http_endpoint(), fixture.beacon.url.clone())
+                .with_base_fee(base_fee)
+        };
+        let (api, handle) = spawn(config()).await;
+        let endpoint = handle.http_endpoint();
+        let from = handle.dev_accounts().next().unwrap();
+        let boundary_dump = api.anvil_dump_state(None).await.unwrap();
+        mine_at(&endpoint, ts(21)).await;
+        let first = block_at(&endpoint, json!("latest")).await;
+        if let Some(base_fee) = base_fee {
+            assert_eq!(json_u64(&first["baseFeePerGas"]), base_fee);
+        }
 
-    // Full blob blocks move both fee inputs away from the boundary successor's.
-    let full = vec![1u8; 5 * 126_976 + 1];
-    assert_eq!(beacon_sidecar(&full).blobs.len(), 6, "full blob payload");
-    for (nonce, slot) in [(0, 22), (1, 23)] {
-        send_blob_txs(&endpoint, from, nonce, &[&full]).await;
-        mine_at(&endpoint, ts(slot)).await;
+        // Full blob blocks and a new base fee move both fee inputs away from the successor's.
+        api.anvil_set_next_block_base_fee_per_gas(U256::from(1_000)).await.unwrap();
+        let full = vec![1u8; 5 * 126_976 + 1];
+        assert_eq!(beacon_sidecar(&full).blobs.len(), 6, "full blob payload");
+        for (nonce, slot) in [(0, 22), (1, 23)] {
+            send_blob_txs(&endpoint, from, nonce, &[&full]).await;
+            mine_at(&endpoint, ts(slot)).await;
+        }
+        let moved = block_at(&endpoint, json!("latest")).await;
+        assert_ne!(moved["baseFeePerGas"], first["baseFeePerGas"]);
+        // Explicit fees skip the fork's Cancun blob params, so six blobs don't exceed the target.
+        if base_fee.is_none() {
+            assert_ne!(moved["excessBlobGas"], first["excessBlobGas"]);
+        }
+
+        let (restarted_api, restarted) = spawn(config()).await;
+        for (api, endpoint, case) in
+            [(&api, endpoint, "live"), (&restarted_api, restarted.http_endpoint(), "restarted")]
+        {
+            api.anvil_load_state(boundary_dump.clone()).await.unwrap();
+            mine_at(&endpoint, ts(21)).await;
+            let restored = block_at(&endpoint, json!("latest")).await;
+            let context = format!("{case} load with base fee {base_fee:?}");
+            assert_eq!(restored["baseFeePerGas"], first["baseFeePerGas"], "{context}");
+            assert_eq!(restored["excessBlobGas"], first["excessBlobGas"], "{context}");
+            assert_eq!(restored["hash"], first["hash"], "{context}");
+        }
     }
-    let moved = block_at(&endpoint, json!("latest")).await;
-    assert_ne!(moved["baseFeePerGas"], first["baseFeePerGas"]);
-    assert_ne!(moved["excessBlobGas"], first["excessBlobGas"]);
-
-    fixture.api.anvil_load_state(boundary_dump).await.unwrap();
-    mine_at(&endpoint, ts(21)).await;
-    let restored = block_at(&endpoint, json!("latest")).await;
-    assert_eq!(restored["baseFeePerGas"], first["baseFeePerGas"]);
-    assert_eq!(restored["excessBlobGas"], first["excessBlobGas"]);
-    assert_eq!(restored["hash"], first["hash"]);
 }
 
 #[tokio::test(flavor = "multi_thread")]

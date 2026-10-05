@@ -1177,7 +1177,6 @@ impl Backend {
                 "State dump Beacon identity does not match the configured fork, chain or finality settings",
             ).into());
         }
-        let mut boundary_header = None;
         if let Some(identity) = &identity {
             // A Beacon resume is a replacement, unlike the legacy account-merge API. Validate
             // the entire local chain before discarding anything, including a live node's suffix.
@@ -1216,16 +1215,14 @@ impl Backend {
             }
             let fork = self.get_fork().expect("Beacon identity requires a fork");
             if state.blocks.is_empty() {
-                // At the fork block the dump has no local body. Fetch its fee inputs before
-                // mutating state.
-                boundary_header = Some(
-                    fork.block_by_number(identity.block_number)
-                        .await?
-                        .ok_or(BlockchainError::BlockNotFound)?
-                        .header
-                        .inner
-                        .clone(),
-                );
+                // At the fork block, restore the successor fees from fork setup: they may be
+                // explicit settings rather than values derived from the fork block.
+                let config = fork.config.read();
+                self.time.reset(identity.timestamp);
+                self.fees.set_base_fee(config.next_base_fee);
+                if let Some(blob_fees) = config.next_blob_excess_gas_and_price {
+                    self.fees.set_blob_excess_gas_and_price(blob_fees);
+                }
             }
             *self.blockchain.storage.write() = BlockchainStorage::forked(
                 identity.block_number,
@@ -1294,8 +1291,7 @@ impl Backend {
             .blocks
             .iter()
             .max_by_key(|b| b.header.number)
-            .map(|latest| AnyHeader::from(latest.header.clone()))
-            .or(boundary_header);
+            .map(|latest| AnyHeader::from(latest.header.clone()));
         if let Some(header) = head {
             if identity.is_some() {
                 self.time.reset(header.timestamp);

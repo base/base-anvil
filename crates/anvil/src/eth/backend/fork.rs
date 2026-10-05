@@ -674,6 +674,10 @@ pub struct ClientForkConfig {
     pub blob_gas_used: Option<u128>,
     /// Blob excess gas and price of the forked block
     pub blob_excess_gas_and_price: Option<BlobExcessGasAndPrice>,
+    /// Base fee of the fork block's successor, explicit or derived from the fork block
+    pub next_base_fee: u64,
+    /// Blob excess gas and price of the fork block's successor
+    pub next_blob_excess_gas_and_price: Option<BlobExcessGasAndPrice>,
     /// request timeout
     pub timeout: Duration,
     /// request retries for spurious networks

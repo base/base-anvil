@@ -1436,6 +1436,8 @@ latest block number: {latest_block}"
             total_difficulty: block.header.total_difficulty.unwrap_or_default(),
             blob_gas_used: block.header.blob_gas_used.map(|g| g as u128),
             blob_excess_gas_and_price: env.evm_env.block_env.blob_excess_gas_and_price,
+            next_base_fee: fees.base_fee(),
+            next_blob_excess_gas_and_price: fees.excess_blob_gas_and_price(),
             force_transactions,
             beacon,
         };
