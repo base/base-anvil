@@ -789,7 +789,7 @@ async fn beacon_api_revert_and_reset_follow_canonical_history() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn beacon_api_reset_keeps_fork_when_account_reads_fail() {
+async fn beacon_api_failed_reset_preserves_live_chain() {
     let (origin_api, origin) = spawn(beacon_origin_config()).await;
     let beacon = MockBeacon::spawn().await;
     // Execution upstream that serves blocks but can reject account reads, like a pruned node.
