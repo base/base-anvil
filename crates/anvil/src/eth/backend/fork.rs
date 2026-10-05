@@ -433,7 +433,9 @@ impl ClientFork {
             return Ok(Some(receipt));
         }
 
-        if let Some(receipt) = self.provider().get_transaction_receipt(hash).await? {
+        if let Some(receipt) = self.provider().get_transaction_receipt(hash).await?
+            && !self.beacon_excludes(receipt.block_number, receipt.block_hash)
+        {
             let receipt = FoundryTxReceipt::try_from(receipt)
                 .map_err(|_| BlockchainError::FailedToDecodeReceipt)?;
             let mut storage = self.storage_write();
@@ -460,6 +462,7 @@ impl ClientFork {
             let receipts = receipts
                 .map(|r| {
                     r.into_iter()
+                        .filter(|r| !self.beacon_excludes(r.block_number, r.block_hash))
                         .map(|r| {
                             FoundryTxReceipt::try_from(r)
                                 .map_err(|_| BlockchainError::FailedToDecodeReceipt)
@@ -619,6 +622,12 @@ impl ClientFork {
                 number > config.block_number
                     || (number == config.block_number && hash != Some(config.block_hash))
             })
+    }
+
+    /// Whether Beacon mode hides an upstream transaction that is not on the pinned chain.
+    pub async fn beacon_hides_transaction(&self, hash: B256) -> Result<bool, TransportError> {
+        let beacon = self.config.read().beacon.is_some();
+        Ok(beacon && self.transaction_by_hash(hash).await?.is_none())
     }
 
     /// Converts a block of hashes into a full block

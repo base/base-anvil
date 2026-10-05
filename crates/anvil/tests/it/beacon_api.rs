@@ -2,10 +2,14 @@ use crate::utils::http_provider;
 use alloy_consensus::{Blob, BlobTransactionSidecar, SidecarBuilder, SimpleCoder, Transaction};
 use alloy_network::{TransactionBuilder, TransactionBuilder4844, TransactionResponse};
 use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256, b256};
-use alloy_provider::Provider;
+use alloy_provider::{
+    Provider,
+    ext::{DebugApi, TraceApi},
+};
 use alloy_rpc_types::{
     BlockId, BlockNumberOrTag, Filter, Log, TransactionRequest,
     anvil::{Forking, MineOptions},
+    trace::geth::{GethDebugTracingOptions, GethTrace},
 };
 use alloy_rpc_types_beacon::{
     genesis::{GenesisData, GenesisResponse},
@@ -697,9 +701,25 @@ async fn beacon_api_execution_reads_around_boundary() {
     assert_eq!(historical_tx.block_number(), Some(BEACON_ORIGIN_BLOCK + 1));
     let local_tx = tx_by_hash(local_log).await.unwrap();
     assert_eq!(local_tx.block_number(), Some(PINNED + 2));
+    let receipt = async |hash| provider.get_transaction_receipt(hash).await.unwrap();
+    let traces = async |hash| provider.trace_transaction(hash).await.unwrap();
+    let debug_trace = async |hash| {
+        provider.debug_trace_transaction(hash, GethDebugTracingOptions::default()).await.unwrap()
+    };
+    let no_debug_trace = GethTrace::Default(Default::default());
+    for (hash, context) in [(historical, "historical"), (local_log, "local")] {
+        assert!(receipt(hash).await.is_some(), "{context} receipt");
+        assert!(!traces(hash).await.is_empty(), "{context} traces");
+        assert_ne!(debug_trace(hash).await, no_debug_trace, "{context} debug trace");
+    }
     for (hash, context) in [(competing, "competing F"), (remote, "F+1"), (pending, "pending")] {
         assert!(tx_by_hash(hash).await.is_none(), "{context} transaction");
+        assert!(receipt(hash).await.is_none(), "{context} receipt");
+        assert!(traces(hash).await.is_empty(), "{context} traces");
+        assert_eq!(debug_trace(hash).await, no_debug_trace, "{context} debug trace");
     }
+    let receipts = provider.get_block_receipts(BlockId::number(PINNED)).await.unwrap();
+    assert_eq!(receipts.map(|receipts| receipts.len()), Some(0), "F block receipts");
     let log_txs = |logs: Vec<Log>| logs.into_iter().map(|log| log.transaction_hash.unwrap());
     let logs_at = async |hash| {
         let logs = provider.get_logs(&Filter::new().at_block_hash(hash)).await.unwrap();
