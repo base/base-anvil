@@ -23,7 +23,10 @@ use axum::{
 use foundry_evm::hardfork::EthereumHardfork;
 use ssz::Decode;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 use tokio::net::TcpListener;
@@ -353,6 +356,7 @@ struct MockBeaconState {
     historical_blob: Blob,
     conflicting_blob: Blob,
     blob_requests: Mutex<Vec<String>>,
+    seconds_per_slot: AtomicU64,
 }
 
 /// Mock Beacon node. Blob routes: slot 18 fails with 500, slots 20 and 21 return
@@ -369,13 +373,14 @@ impl MockBeacon {
             historical_blob: beacon_sidecar(BEACON_HISTORICAL_BLOB_DATA).blobs[0],
             conflicting_blob: beacon_sidecar(BEACON_CONFLICTING_BLOB_DATA).blobs[0],
             blob_requests: Mutex::default(),
+            seconds_per_slot: AtomicU64::new(BEACON_SECONDS_PER_SLOT),
         });
         let router = Router::new()
             .route("/eth/v1/beacon/genesis", get(|| async { Json(Self::genesis()) }))
             .route(
                 "/eth/v1/config/spec",
-                get(|| async {
-                    let slot = BEACON_SECONDS_PER_SLOT.to_string();
+                get(|State(state): State<Arc<MockBeaconState>>| async move {
+                    let slot = state.seconds_per_slot.load(Ordering::Relaxed).to_string();
                     Json(serde_json::json!({ "data": { "SECONDS_PER_SLOT": slot } }))
                 }),
             )
@@ -562,12 +567,6 @@ async fn beacon_api_numeric_ids_resolve_local_slots() {
     assert_eq!(beacon_blobs_status(&endpoint, "22").await, StatusCode::NOT_FOUND);
     assert!(beacon_blobs_json(&endpoint, "23").await.is_empty());
     assert_eq!(fixture.beacon.blob_requests(), Vec::<String>::new(), "post-boundary upstream");
-
-    let reset = Forking { json_rpc_url: None, block_number: Some(BEACON_ORIGIN_BLOCK) };
-    assert!(fixture.api.anvil_reset(Some(reset)).await.is_err());
-    assert!(fixture.api.anvil_reset(None).await.is_err());
-    assert_eq!(fixture.api.block_number().unwrap(), U256::from(BEACON_ORIGIN_BLOCK + 2));
-    assert_blobs_eq(&beacon_blobs_json(&endpoint, "21").await, &expected, "slot 21 after reset");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -661,4 +660,51 @@ async fn beacon_api_execution_reads_around_boundary() {
     let remote_hash = BlockId::hash(remote_successor.header.hash);
     assert!(provider.get_block(remote_hash).await.unwrap().is_none(), "hashes lookup");
     assert!(provider.get_block(remote_hash).full().await.unwrap().is_none(), "full lookup");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn beacon_api_revert_and_reset_follow_canonical_history() {
+    let fixture = BeaconTargetFixture::spawn().await;
+    let endpoint = fixture.handle.http_endpoint();
+    let provider = http_provider(&endpoint);
+    let snapshot = fixture.api.evm_snapshot().await.unwrap();
+    fixture.mine_blob_block(1252, &BEACON_LOCAL_BLOB_DATA).await;
+    assert_eq!(beacon_blobs_json(&endpoint, "21").await.len(), 2);
+    assert!(fixture.api.evm_revert(snapshot).await.unwrap());
+    assert_eq!(beacon_blobs_status(&endpoint, "21").await, StatusCode::NOT_FOUND);
+    fixture.mine_blob_block(1276, &BEACON_LOCAL_BLOB_DATA).await;
+
+    // A failed Beacon refresh must preserve the execution fork, local blobs, metadata and clock.
+    let head = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    fixture.api.evm_set_next_block_timestamp(beacon_slot_timestamp(30)).unwrap();
+    fixture.beacon.state.seconds_per_slot.store(0, Ordering::Relaxed);
+    let reset = Forking { json_rpc_url: None, block_number: Some(100) };
+    assert!(fixture.api.anvil_reset(Some(reset.clone())).await.is_err());
+    let kept = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    assert_eq!(kept.header.hash, head.header.hash);
+    assert_eq!(beacon_blobs_json(&endpoint, "23").await.len(), 2);
+    let spec = reqwest::get(format!("{endpoint}/eth/v1/config/spec")).await.unwrap();
+    let spec = spec.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(spec["data"]["SECONDS_PER_SLOT"], BEACON_SECONDS_PER_SLOT.to_string());
+    fixture.api.evm_mine(None).await.unwrap();
+    let next = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    assert_eq!((next.header.number, next.header.timestamp), (102, beacon_slot_timestamp(30)));
+
+    fixture.beacon.state.seconds_per_slot.store(12, Ordering::Relaxed);
+    fixture.api.anvil_reset(Some(reset)).await.unwrap();
+    assert_eq!(fixture.api.block_number().unwrap(), U256::from(100));
+    assert_eq!(beacon_blobs_status(&endpoint, "23").await, StatusCode::NOT_FOUND);
+
+    // Advance the origin and reset to that new boundary; the next local slot follows it.
+    fixture.origin_api.evm_mine(Some(MineOptions::Timestamp(Some(1276)))).await.unwrap();
+    let reset = Forking { json_rpc_url: None, block_number: Some(101) };
+    fixture.api.anvil_reset(Some(reset)).await.unwrap();
+    fixture.api.evm_mine(None).await.unwrap();
+    let head = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    assert_eq!((head.header.number, head.header.timestamp), (102, 1288));
+
+    // In-memory mode drops the Beacon slot restrictions.
+    fixture.api.anvil_reset(None).await.unwrap();
+    fixture.api.evm_set_block_timestamp_interval(5).unwrap();
+    fixture.api.evm_mine(None).await.unwrap();
 }

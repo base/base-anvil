@@ -527,6 +527,9 @@ impl Backend {
     /// Resets the fork to a fresh state
     pub async fn reset_fork(&self, forking: Forking) -> Result<(), BlockchainError> {
         let _mining_guard = self.mining.lock().await;
+        if self.node_config.read().await.fork_beacon_url.is_some() {
+            return self.reset_beacon_fork(forking).await;
+        }
         if !self.is_fork() {
             if let Some(eth_rpc_url) = forking.clone().json_rpc_url {
                 let mut env = self.env.read().clone();
@@ -631,11 +634,67 @@ impl Backend {
         }
     }
 
+    /// Prepares both upstreams before replacing a Beacon-enabled fork. A failed metadata
+    /// request must not leave the execution database on a different fork from the slot schedule.
+    /// The caller must hold the mining lock.
+    async fn reset_beacon_fork(&self, forking: Forking) -> Result<(), BlockchainError> {
+        if !self.is_fork() && forking.json_rpc_url.is_none() {
+            return Err(RpcError::invalid_params(
+                "Forking not enabled and RPC URL not provided to start forking",
+            )
+            .into());
+        }
+        let mut config = self.node_config.read().await.clone();
+        let url = forking
+            .json_rpc_url
+            .or_else(|| config.eth_rpc_url.clone())
+            .ok_or_else(|| RpcError::invalid_params("Execution fork URL is required"))?;
+        config.eth_rpc_url = Some(url.clone());
+        config.fork_choice = forking.block_number.map(|number| ForkChoice::Block(number as i128));
+        config.base_fee = None;
+        config.gas_price = None;
+        let mut env = self.env.read().clone();
+        let fees = FeeManager::new(
+            self.spec_id(),
+            self.fees.base_fee(),
+            self.fees.is_min_priority_fee_enforced(),
+            self.fees.raw_gas_price(),
+            config.get_blob_excess_gas_and_price(),
+            self.fees.blob_params(),
+            self.fees.base_fee_params(),
+        );
+        let (db, fork_config) = config.setup_fork_db_config(url, &mut env, &fees).await?;
+        let beacon = fork_config.beacon.as_ref().expect("Beacon URL is configured");
+        self.time.set_beacon_slots(Some((beacon.genesis.genesis_time, beacon.seconds_per_slot)))?;
+        self.time.reset(fork_config.timestamp);
+        *self.db.write().await = Box::new(db);
+        *self.env.write() = env;
+        *self.blockchain.storage.write() = BlockchainStorage::forked(
+            fork_config.block_number,
+            fork_config.block_hash,
+            fork_config.total_difficulty,
+        );
+        *self.fork.write() = Some(ClientFork::new(fork_config, Arc::clone(&self.db)));
+        self.fees.set_base_fee(fees.base_fee());
+        self.fees.set_gas_price(fees.raw_gas_price());
+        self.fees.set_blob_params(fees.blob_params());
+        if let Some(blob_fees) = fees.excess_blob_gas_and_price() {
+            self.fees.set_blob_excess_gas_and_price(blob_fees);
+        }
+        self.states.write().clear();
+        self.active_state_snapshots.lock().clear();
+        *self.node_config.write().await = config;
+        self.apply_genesis().await?;
+        Ok(())
+    }
+
     /// Resets the backend to a fresh in-memory state, clearing all existing data
     pub async fn reset_to_in_mem(&self) -> Result<(), BlockchainError> {
         let _mining_guard = self.mining.lock().await;
         // Clear the fork if any exists
         *self.fork.write() = None;
+        self.time.set_beacon_slots(None)?;
+        self.active_state_snapshots.lock().clear();
 
         // Get environment and genesis config
         let env = self.env.read().clone();
