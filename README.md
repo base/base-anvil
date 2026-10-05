@@ -69,10 +69,14 @@ are bounded to year 9999. Transaction-body pruning is incompatible with retainin
 Safe/finalized tags remain Anvil's simulated block-depth policy, not Ethereum finality.
 
 State dumps in this mode record the fork block number, hash and timestamp, chain ID, Beacon
-genesis, slot duration and `--slots-in-an-epoch`. A Beacon-backed node rejects every state load,
-including `--state` resume: dumps with another or no identity are incompatible, and Anvil's
-account-merging load cannot replace a Beacon fork's history. Other modes still load legacy dumps
-but reject Beacon dumps.
+genesis, slot duration and `--slots-in-an-epoch`. Resume with `--state <file>` and the same
+explicit fork block and settings. Dumps with another or no identity, or whose local headers do not
+extend the fork block contiguously on later slots, are rejected before loading. Other modes still
+load legacy dumps but reject Beacon dumps. A Beacon load, including a live `anvil_loadState`,
+replaces local accounts, blocks and snapshots instead of merging histories; pause mining and drain
+pending transactions first. Clock and fees resume from the canonical tip. Dumps contain neither
+endpoint URLs nor clock offsets or pending timestamp overrides, so an orchestrator must reapply
+connectivity, mining policy and a current aligned timestamp after downtime.
 
 Everything below is inherited from upstream Foundry and works unchanged; only the Base additions above are specific to this fork.
 

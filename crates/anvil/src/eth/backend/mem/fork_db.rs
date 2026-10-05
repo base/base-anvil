@@ -111,6 +111,7 @@ impl MaybeFullDatabase for ForkedDatabase {
     fn clear(&mut self) {
         self.flush_cache();
         self.clear_into_state_snapshot();
+        self.database_mut().cache = Default::default();
     }
 
     fn init_from_state_snapshot(&mut self, state_snapshot: StateSnapshot) {

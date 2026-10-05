@@ -17,7 +17,7 @@ use crate::{
                 storage::MinedTransactionReceipt,
             },
             notifications::{NewBlockNotification, NewBlockNotifications},
-            time::{TimeManager, utc_from_secs},
+            time::{MAX_BEACON_TIMESTAMP, TimeManager, utc_from_secs},
             validate::TransactionValidator,
         },
         error::{BlockchainError, ErrDetail, InvalidTransactionError},
@@ -1098,6 +1098,9 @@ impl Backend {
                 basefee: env.evm_env.block_env.basefee,
                 ..Default::default()
             }
+        } else {
+            // A state load may invalidate backend snapshots while the database still holds them.
+            return Ok(false);
         }
         Ok(self.db.write().await.revert_state(id, RevertStateSnapshotAction::RevertRemove))
     }
@@ -1174,12 +1177,68 @@ impl Backend {
                 "State dump Beacon identity does not match the configured fork, chain or finality settings",
             ).into());
         }
-        if identity.is_some() {
-            // Loading merges accounts and history; a Beacon fork needs a validated replacement.
-            return Err(RpcError::invalid_params(
-                "Loading state is not supported with a Beacon upstream",
-            )
-            .into());
+        let mut boundary_header = None;
+        if let Some(identity) = &identity {
+            // A Beacon resume is a replacement, unlike the legacy account-merge API. Validate
+            // the entire local chain before discarding anything, including a live node's suffix.
+            let mut headers = state.blocks.iter().map(|block| &block.header).collect::<Vec<_>>();
+            headers.sort_unstable_by_key(|header| header.number);
+            let mut number = identity.block_number;
+            let mut hash = identity.block_hash;
+            let mut timestamp = identity.timestamp;
+            for header in headers {
+                if number.checked_add(1) != Some(header.number)
+                    || header.parent_hash != hash
+                    || header.timestamp <= timestamp
+                    || header.timestamp > MAX_BEACON_TIMESTAMP
+                    || (header.timestamp - identity.genesis.genesis_time)
+                        % identity.seconds_per_slot
+                        != 0
+                {
+                    return Err(RpcError::invalid_params(
+                        "Invalid local Beacon chain in state dump",
+                    )
+                    .into());
+                }
+                number = header.number;
+                hash = header.hash_slow();
+                timestamp = header.timestamp;
+            }
+            if state.best_block_number != Some(number)
+                || state.block.as_ref().is_none_or(|block| {
+                    block.number != U256::from(number) || block.timestamp != U256::from(timestamp)
+                })
+            {
+                return Err(RpcError::invalid_params(
+                    "State dump does not match its canonical Beacon tip",
+                )
+                .into());
+            }
+            let fork = self.get_fork().expect("Beacon identity requires a fork");
+            if state.blocks.is_empty() {
+                // At the fork block the dump has no local body. Fetch its fee inputs before
+                // mutating state.
+                boundary_header = Some(
+                    fork.block_by_number(identity.block_number)
+                        .await?
+                        .ok_or(BlockchainError::BlockNotFound)?
+                        .header
+                        .inner
+                        .clone(),
+                );
+            }
+            *self.blockchain.storage.write() = BlockchainStorage::forked(
+                identity.block_number,
+                identity.block_hash,
+                fork.total_difficulty(),
+            );
+            self.states.write().clear();
+            self.active_state_snapshots.lock().clear();
+            let mut db = self.db.write().await;
+            db.clear();
+            for block in &state.blocks {
+                db.insert_block_hash(U256::from(block.header.number), block.header.hash_slow());
+            }
         }
         // load the blocks and transactions into the storage
         self.blockchain.storage.write().load_blocks(state.blocks.clone());
@@ -1230,8 +1289,16 @@ impl Backend {
             }
         }
 
-        if let Some(latest) = state.blocks.iter().max_by_key(|b| b.header.number) {
-            let header = &latest.header;
+        let head = state
+            .blocks
+            .iter()
+            .max_by_key(|b| b.header.number)
+            .map(|latest| AnyHeader::from(latest.header.clone()))
+            .or(boundary_header);
+        if let Some(header) = head {
+            if identity.is_some() {
+                self.time.reset(header.timestamp);
+            }
             let next_block_base_fee = self.fees.get_next_block_base_fee_per_gas(
                 header.gas_used,
                 header.gas_limit,
