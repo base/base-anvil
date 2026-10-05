@@ -1,13 +1,17 @@
 //! Beacon-backed state persistence: state dump identity and live state loads.
 
-use crate::beacon_api::{
-    BEACON_GENESIS_FORK_VERSION, BEACON_GENESIS_TIME_SECS, BEACON_GENESIS_VALIDATORS_ROOT,
-    BEACON_LOCAL_BLOB_DATA, BEACON_ORIGIN_BLOCK, BEACON_ORIGIN_TIMESTAMP_SECS,
-    BEACON_SECONDS_PER_SLOT, BeaconTargetFixture, beacon_slot_timestamp, beacon_target_config,
-    send_blob_txs,
+use crate::{
+    beacon_api::{
+        BEACON_GENESIS_FORK_VERSION, BEACON_GENESIS_TIME_SECS, BEACON_GENESIS_VALIDATORS_ROOT,
+        BEACON_LOCAL_BLOB_DATA, BEACON_ORIGIN_BLOCK, BEACON_ORIGIN_TIMESTAMP_SECS,
+        BEACON_SECONDS_PER_SLOT, BeaconTargetFixture, beacon_slot_timestamp, beacon_target_config,
+        send_blob_txs,
+    },
+    utils::http_provider,
 };
 use alloy_network::TransactionBuilder;
 use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256, keccak256};
+use alloy_provider::Provider;
 use alloy_rpc_types::{TransactionRequest, anvil::MineOptions};
 use alloy_rpc_types_beacon::genesis::GenesisData;
 use anvil::{NodeConfig, eth::EthApi, spawn};
@@ -20,35 +24,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Bound on a single HTTP request to a node or Beacon endpoint.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Payload of a blob mined only by a node whose history must be discarded or kept intact.
 const OTHER_BLOB_DATA: &[u8] = b"other node local blob";
 
-fn client() -> reqwest::Client {
-    reqwest::Client::builder().timeout(REQUEST_TIMEOUT).build().unwrap()
-}
-
-/// Sends one JSON-RPC request, returning its result or its error object.
-async fn rpc(endpoint: &str, method: &str, params: Value) -> Result<Value, Value> {
-    let request = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params });
-    let response: Value = client()
-        .post(endpoint)
-        .json(&request)
-        .send()
-        .await
-        .unwrap_or_else(|error| panic!("{method}: {error}"))
-        .json()
-        .await
-        .unwrap();
-    match response.get("error") {
-        Some(error) => Err(error.clone()),
-        None => Ok(response["result"].clone()),
-    }
-}
-
 async fn rpc_ok(endpoint: &str, method: &str, params: Value) -> Value {
-    rpc(endpoint, method, params).await.unwrap_or_else(|error| panic!("{method} failed: {error}"))
+    http_provider(endpoint)
+        .raw_request(method.to_owned().into(), params)
+        .await
+        .unwrap_or_else(|error| panic!("{method} failed: {error}"))
 }
 
 /// Reads a JSON number, decimal string, or hex quantity.
@@ -116,16 +99,15 @@ async fn block_at(endpoint: &str, id: Value) -> Value {
 }
 
 async fn block_number(endpoint: &str) -> u64 {
-    json_u64(&rpc_ok(endpoint, "eth_blockNumber", json!([])).await)
+    http_provider(endpoint).get_block_number().await.unwrap()
 }
 
 async fn balance(endpoint: &str, address: Address) -> U256 {
-    serde_json::from_value(rpc_ok(endpoint, "eth_getBalance", json!([address, "latest"])).await)
-        .unwrap()
+    http_provider(endpoint).get_balance(address).await.unwrap()
 }
 
 async fn nonce(endpoint: &str, address: Address) -> u64 {
-    json_u64(&rpc_ok(endpoint, "eth_getTransactionCount", json!([address, "latest"])).await)
+    http_provider(endpoint).get_transaction_count(address).await.unwrap()
 }
 
 fn blobs_path(query: &str) -> String {
@@ -134,7 +116,8 @@ fn blobs_path(query: &str) -> String {
 
 /// Fetches a Beacon path as JSON or SSZ, returning the status and exact body bytes.
 async fn beacon_get(endpoint: &str, path: &str, ssz: bool) -> (u16, Vec<u8>) {
-    let mut request = client().get(format!("{endpoint}{path}"));
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().unwrap();
+    let mut request = client.get(format!("{endpoint}{path}"));
     if ssz {
         request = request.header(reqwest::header::ACCEPT, "application/octet-stream");
     }
