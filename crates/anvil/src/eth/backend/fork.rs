@@ -256,7 +256,8 @@ impl ClientFork {
             return Ok(logs);
         }
 
-        let logs = self.provider().get_logs(filter).await?;
+        let mut logs = self.provider().get_logs(filter).await?;
+        logs.retain(|log| !self.beacon_excludes(log.block_number, log.block_hash));
 
         let mut storage = self.storage_write();
         storage.logs.insert(filter.clone(), logs.clone());
@@ -364,6 +365,7 @@ impl ClientFork {
         }
 
         let tx = self.provider().get_transaction_by_hash(hash).await?;
+        let tx = tx.filter(|tx| !self.beacon_excludes(tx.block_number(), tx.block_hash()));
         if let Some(tx) = tx.clone() {
             let mut storage = self.storage_write();
             storage.transactions.insert(hash, tx);
@@ -544,14 +546,8 @@ impl ClientFork {
         if let Some(block) = self.provider().get_block(block_id.into()).full().await? {
             let hash = block.header.hash;
             let block_number = block.header.number;
-            {
-                let config = self.config.read();
-                if config.beacon.is_some()
-                    && (block_number > config.block_number
-                        || (block_number == config.block_number && hash != config.block_hash))
-                {
-                    return Ok(None);
-                }
+            if self.beacon_excludes(Some(block_number), Some(hash)) {
+                return Ok(None);
             }
             let mut storage = self.storage_write();
             // also insert all transactions
@@ -612,6 +608,17 @@ impl ClientFork {
         }
         self.storage_write().uncles.insert(block_hash, uncles.clone());
         Ok(uncles.get(index).cloned())
+    }
+
+    /// Whether Beacon mode hides upstream data from a block outside the pinned chain: unmined,
+    /// past the fork block, or a competing fork block.
+    fn beacon_excludes(&self, number: Option<u64>, hash: Option<B256>) -> bool {
+        let config = self.config.read();
+        config.beacon.is_some()
+            && number.is_none_or(|number| {
+                number > config.block_number
+                    || (number == config.block_number && hash != Some(config.block_hash))
+            })
     }
 
     /// Converts a block of hashes into a full block

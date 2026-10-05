@@ -1,10 +1,10 @@
 use crate::utils::http_provider;
 use alloy_consensus::{Blob, BlobTransactionSidecar, SidecarBuilder, SimpleCoder, Transaction};
-use alloy_network::{TransactionBuilder, TransactionBuilder4844};
-use alloy_primitives::{B256, FixedBytes, U256, b256};
+use alloy_network::{TransactionBuilder, TransactionBuilder4844, TransactionResponse};
+use alloy_primitives::{Address, B256, Bytes, FixedBytes, U256, b256};
 use alloy_provider::Provider;
 use alloy_rpc_types::{
-    BlockId, BlockNumberOrTag, TransactionRequest,
+    BlockId, BlockNumberOrTag, Filter, Log, TransactionRequest,
     anvil::{Forking, MineOptions},
 };
 use alloy_rpc_types_beacon::{
@@ -620,45 +620,104 @@ async fn beacon_api_rejects_offgrid_and_reused_slot_timestamps() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn beacon_api_execution_reads_around_boundary() {
-    let fixture = BeaconTargetFixture::spawn().await;
+    // Upstream history: block 101 emits a log; the target pins empty block 102.
+    const PINNED: u64 = BEACON_ORIGIN_BLOCK + 2;
+    let mine_at = async |api: &EthApi, slot| {
+        api.evm_mine(Some(MineOptions::Timestamp(Some(beacon_slot_timestamp(slot))))).await.unwrap()
+    };
+    let (origin_api, origin) = spawn(beacon_origin_config()).await;
+    let origin_provider = http_provider(&origin.http_endpoint());
+    let origin_sender = origin.dev_accounts().nth(1).unwrap();
+    let historical = send_log_tx(&origin.http_endpoint(), origin_sender).await;
+    mine_at(&origin_api, 21).await;
+    mine_at(&origin_api, 22).await;
+    let origin_block = async |number: u64| {
+        origin_provider.get_block(BlockId::number(number)).await.unwrap().unwrap()
+    };
+    let origin_boundary = origin_block(PINNED).await;
+
+    let beacon = MockBeacon::spawn().await;
+    let config = beacon_target_config(origin.http_endpoint(), beacon.url.clone())
+        .with_fork_block_number(Some(PINNED));
+    let (api, handle) = spawn(config).await;
+    let fixture = BeaconTargetFixture { origin_api, origin, beacon, api, handle };
     let provider = http_provider(&fixture.handle.http_endpoint());
-    let origin_provider = http_provider(&fixture.origin.http_endpoint());
-
-    // Competing upstream continuation after the pinned block.
-    let at_25 = MineOptions::Timestamp(Some(beacon_slot_timestamp(25)));
-    fixture.origin_api.evm_mine(Some(at_25)).await.unwrap();
-    let origin_block = |number: u64| origin_provider.get_block(BlockId::number(number));
-    let origin_boundary = origin_block(BEACON_ORIGIN_BLOCK).await.unwrap().unwrap();
-    let remote_successor = origin_block(BEACON_ORIGIN_BLOCK + 1).await.unwrap().unwrap();
-
-    let sent = fixture.mine_blob_block(beacon_slot_timestamp(21), &BEACON_LOCAL_BLOB_DATA).await;
-    let sent_hashes = sent.iter().map(|(hash, _)| *hash).collect::<Vec<_>>();
 
     // Boundary block F is the upstream block, by number and by hash.
-    let boundary = provider.get_block(BlockId::number(BEACON_ORIGIN_BLOCK)).await.unwrap().unwrap();
+    let boundary = provider.get_block(BlockId::number(PINNED)).await.unwrap().unwrap();
     let boundary_hash = boundary.header.hash;
     assert_eq!(boundary_hash, origin_boundary.header.hash);
     let by_hash = provider.get_block(BlockId::hash(boundary_hash)).await.unwrap().unwrap();
-    assert_eq!(by_hash.header.number, BEACON_ORIGIN_BLOCK);
+    assert_eq!(by_hash.header.number, PINNED);
     let by_hash = provider.get_block(BlockId::hash(boundary_hash)).full().await.unwrap().unwrap();
-    assert_eq!(by_hash.header.number, BEACON_ORIGIN_BLOCK);
+    assert_eq!(by_hash.header.number, PINNED);
+
+    // Upstream replaces F, continues past it, and holds a pending transaction.
+    let origin_endpoint = fixture.origin.http_endpoint();
+    fixture.origin_api.anvil_rollback(Some(1)).await.unwrap();
+    let competing = send_log_tx(&origin_endpoint, origin_sender).await;
+    mine_at(&fixture.origin_api, 22).await;
+    let remote = send_log_tx(&origin_endpoint, origin_sender).await;
+    mine_at(&fixture.origin_api, 25).await;
+    let pending = send_log_tx(&origin_endpoint, origin_sender).await;
+    let competing_boundary = origin_block(PINNED).await;
+    assert_ne!(competing_boundary.header.hash, boundary_hash);
+    let remote_successor = origin_block(PINNED + 1).await;
+
+    let sent = fixture.mine_blob_block(beacon_slot_timestamp(23), &BEACON_LOCAL_BLOB_DATA).await;
+    let sent_hashes = sent.iter().map(|(hash, _)| *hash).collect::<Vec<_>>();
+    let local_log =
+        send_log_tx(&fixture.handle.http_endpoint(), fixture.handle.dev_accounts().next().unwrap())
+            .await;
+    mine_at(&fixture.api, 24).await;
 
     // F+1 is the local blob block, by number and by hash.
-    let local =
-        provider.get_block(BlockId::number(BEACON_ORIGIN_BLOCK + 1)).await.unwrap().unwrap();
+    let local = provider.get_block(BlockId::number(PINNED + 1)).await.unwrap().unwrap();
     let local_hash = local.header.hash;
     assert_ne!(local_hash, remote_successor.header.hash);
     assert_eq!(local.header.parent_hash, boundary_hash);
     let by_hash = provider.get_block(BlockId::hash(local_hash)).full().await.unwrap().unwrap();
-    assert_eq!(by_hash.header.number, BEACON_ORIGIN_BLOCK + 1);
+    assert_eq!(by_hash.header.number, PINNED + 1);
     assert_eq!(by_hash.transactions.hashes().collect::<Vec<_>>(), sent_hashes);
     for hash in &sent_hashes {
         let receipt = provider.get_transaction_receipt(*hash).await.unwrap().unwrap();
         assert_eq!(receipt.block_hash, Some(local_hash));
     }
 
-    // The upstream's post-boundary block is not part of the local chain.
-    let remote_hash = BlockId::hash(remote_successor.header.hash);
-    assert!(provider.get_block(remote_hash).await.unwrap().is_none(), "hashes lookup");
-    assert!(provider.get_block(remote_hash).full().await.unwrap().is_none(), "full lookup");
+    // Upstream blocks off the pinned chain are not part of the local chain.
+    for (block, context) in [(&competing_boundary, "competing F"), (&remote_successor, "F+1")] {
+        let hash = BlockId::hash(block.header.hash);
+        assert!(provider.get_block(hash).await.unwrap().is_none(), "{context} hashes lookup");
+        assert!(provider.get_block(hash).full().await.unwrap().is_none(), "{context} full lookup");
+    }
+
+    // Nor are their transactions and logs, unlike historical and local ones.
+    let tx_by_hash = async |hash| provider.get_transaction_by_hash(hash).await.unwrap();
+    let historical_tx = tx_by_hash(historical).await.unwrap();
+    assert_eq!(historical_tx.block_number(), Some(BEACON_ORIGIN_BLOCK + 1));
+    let local_tx = tx_by_hash(local_log).await.unwrap();
+    assert_eq!(local_tx.block_number(), Some(PINNED + 2));
+    for (hash, context) in [(competing, "competing F"), (remote, "F+1"), (pending, "pending")] {
+        assert!(tx_by_hash(hash).await.is_none(), "{context} transaction");
+    }
+    let log_txs = |logs: Vec<Log>| logs.into_iter().map(|log| log.transaction_hash.unwrap());
+    let logs_at = async |hash| {
+        let logs = provider.get_logs(&Filter::new().at_block_hash(hash)).await.unwrap();
+        log_txs(logs).collect::<Vec<_>>()
+    };
+    assert_eq!(logs_at(historical_tx.block_hash().unwrap()).await, [historical]);
+    assert_eq!(logs_at(local_tx.block_hash().unwrap()).await, [local_log]);
+    assert!(logs_at(competing_boundary.header.hash).await.is_empty(), "competing F logs");
+    assert!(logs_at(remote_successor.header.hash).await.is_empty(), "F+1 logs");
+    let range = provider.get_logs(&Filter::new().from_block(BEACON_ORIGIN_BLOCK)).await.unwrap();
+    assert_eq!(log_txs(range).collect::<Vec<_>>(), [historical, local_log], "range logs");
+}
+
+/// Sends a contract creation whose init code emits one empty `LOG0`.
+async fn send_log_tx(endpoint: &str, from: Address) -> B256 {
+    // PUSH1 0, PUSH1 0, LOG0
+    let init_code = Bytes::from_static(&[0x60, 0x00, 0x60, 0x00, 0xa0]);
+    let tx = TransactionRequest::default().with_from(from).with_deploy_code(init_code);
+    let pending = http_provider(endpoint).send_transaction(WithOtherFields::new(tx)).await;
+    *pending.unwrap().tx_hash()
 }
