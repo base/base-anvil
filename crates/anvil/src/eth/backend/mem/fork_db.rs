@@ -70,6 +70,7 @@ impl Db for ForkedDatabase {
             blocks,
             transactions,
             historical_states,
+            fork_beacon: None,
         }))
     }
 

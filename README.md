@@ -68,6 +68,12 @@ timestamp before enabling mining; do not move Beacon genesis to hide the gap. Ex
 are bounded to year 9999. Transaction-body pruning is incompatible with retaining local blobs.
 Safe/finalized tags remain Anvil's simulated block-depth policy, not Ethereum finality.
 
+State dumps in this mode record the fork block number, hash and timestamp, chain ID, Beacon
+genesis, slot duration and `--slots-in-an-epoch`. A Beacon-backed node rejects every state load,
+including `--state` resume: dumps with another or no identity are incompatible, and Anvil's
+account-merging load cannot replace a Beacon fork's history. Other modes still load legacy dumps
+but reject Beacon dumps.
+
 Everything below is inherited from upstream Foundry and works unchanged; only the Base additions above are specific to this fork.
 
 ---
