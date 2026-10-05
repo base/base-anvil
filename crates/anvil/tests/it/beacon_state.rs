@@ -582,7 +582,7 @@ async fn beacon_state_load_restores_nonce_below_upstream() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn beacon_state_load_keeps_fork_block_hash_without_upstream() {
+async fn beacon_state_load_keeps_boundary_hash_without_upstream() {
     let fixture = BeaconTargetFixture::spawn().await;
     let endpoint = fixture.handle.http_endpoint();
     let boundary = block_at(&endpoint, quantity(BEACON_ORIGIN_BLOCK)).await["hash"].clone();
