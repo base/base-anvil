@@ -2734,7 +2734,9 @@ impl Backend {
             return Ok(traces);
         }
 
-        if let Some(fork) = self.get_fork() {
+        if let Some(fork) = self.get_fork()
+            && !fork.beacon_hides_transaction(hash).await?
+        {
             return Ok(fork.trace_transaction(hash).await?);
         }
 
@@ -2787,7 +2789,9 @@ impl Backend {
             return trace;
         }
 
-        if let Some(fork) = self.get_fork() {
+        if let Some(fork) = self.get_fork()
+            && !fork.beacon_hides_transaction(hash).await?
+        {
             return Ok(fork.debug_trace_transaction(hash, opts).await?);
         }
 
