@@ -3,13 +3,30 @@ use alloy_consensus::{Blob, BlobTransactionSidecar, SidecarBuilder, SimpleCoder,
 use alloy_network::{TransactionBuilder, TransactionBuilder4844};
 use alloy_primitives::{B256, FixedBytes, U256, b256};
 use alloy_provider::Provider;
-use alloy_rpc_types::TransactionRequest;
-use alloy_rpc_types_beacon::{genesis::GenesisResponse, sidecar::GetBlobsResponse};
+use alloy_rpc_types::{
+    BlockId, BlockNumberOrTag, TransactionRequest,
+    anvil::{Forking, MineOptions},
+};
+use alloy_rpc_types_beacon::{
+    genesis::{GenesisData, GenesisResponse},
+    sidecar::GetBlobsResponse,
+};
 use alloy_serde::WithOtherFields;
-use anvil::{NodeConfig, spawn};
+use anvil::{NodeConfig, NodeHandle, eth::EthApi, spawn};
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::get,
+};
 use foundry_evm::hardfork::EthereumHardfork;
 use ssz::Decode;
-use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use tokio::net::TcpListener;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_beacon_api_get_blob_sidecars() {
@@ -286,4 +303,362 @@ async fn test_beacon_api_get_spec() {
         .unwrap();
 
     assert_eq!(response, serde_json::json!({ "data": { "SECONDS_PER_SLOT": "4" } }));
+}
+
+// Mock Beacon chain: genesis 1,000 with 12-second slots; the target forks at block 100, slot 20.
+pub(super) const BEACON_ORIGIN_BLOCK: u64 = 100;
+pub(super) const BEACON_ORIGIN_TIMESTAMP_SECS: u64 = 1_240;
+pub(super) const BEACON_GENESIS_TIME_SECS: u64 = 1_000;
+pub(super) const BEACON_SECONDS_PER_SLOT: u64 = 12;
+// Nonzero, so a locally synthesized zero identity is detectable.
+pub(super) const BEACON_GENESIS_VALIDATORS_ROOT: B256 =
+    b256!("0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95");
+pub(super) const BEACON_GENESIS_FORK_VERSION: [u8; 4] = [0x01, 0x02, 0x03, 0x04];
+/// Upstream-owned blob at slot 20.
+pub(super) const BEACON_HISTORICAL_BLOB_DATA: &[u8] = b"mock beacon historical slot 20 blob";
+/// Upstream blob at slot 21, which the target must never serve.
+pub(super) const BEACON_CONFLICTING_BLOB_DATA: &[u8] = b"mock beacon conflicting slot 21 blob";
+pub(super) const BEACON_LOCAL_BLOB_DATA: [&[u8]; 2] =
+    [b"local slot 21 blob zero", b"local slot 21 blob one"];
+
+pub(super) const fn beacon_slot_timestamp(slot: u64) -> u64 {
+    BEACON_GENESIS_TIME_SECS + slot * BEACON_SECONDS_PER_SLOT
+}
+
+pub(super) fn beacon_sidecar(data: &[u8]) -> BlobTransactionSidecar {
+    SidecarBuilder::<SimpleCoder>::from_slice(data).build().unwrap()
+}
+
+/// Origin execution node: Cancun genesis at block 100, timestamp 1,240, mining paused.
+pub(super) fn beacon_origin_config() -> NodeConfig {
+    NodeConfig::test()
+        .with_genesis_block_number(Some(BEACON_ORIGIN_BLOCK))
+        .with_genesis_timestamp(Some(BEACON_ORIGIN_TIMESTAMP_SECS))
+        .with_hardfork(Some(EthereumHardfork::Cancun.into()))
+        .with_no_mining(true)
+}
+
+/// Target node pinned to `origin_url` at block 100 with `beacon_url` as its Beacon upstream.
+pub(super) fn beacon_target_config(origin_url: String, beacon_url: String) -> NodeConfig {
+    NodeConfig::test()
+        .with_eth_rpc_url(Some(origin_url))
+        .with_fork_block_number(Some(BEACON_ORIGIN_BLOCK))
+        .no_storage_caching()
+        .with_fork_beacon_url(Some(beacon_url))
+        .with_hardfork(Some(EthereumHardfork::Cancun.into()))
+        .with_no_mining(true)
+}
+
+struct MockBeaconState {
+    historical_blob: Blob,
+    conflicting_blob: Blob,
+    blob_requests: Mutex<Vec<String>>,
+}
+
+/// Mock Beacon node. Blob routes: slot 18 fails with 500, slots 20 and 21 return
+/// [`BEACON_HISTORICAL_BLOB_DATA`] and [`BEACON_CONFLICTING_BLOB_DATA`] ignoring filters, every
+/// other block ID is 404. Records every blob request's block ID.
+pub(super) struct MockBeacon {
+    pub(super) url: String,
+    state: Arc<MockBeaconState>,
+}
+
+impl MockBeacon {
+    pub(super) async fn spawn() -> Self {
+        let state = Arc::new(MockBeaconState {
+            historical_blob: beacon_sidecar(BEACON_HISTORICAL_BLOB_DATA).blobs[0],
+            conflicting_blob: beacon_sidecar(BEACON_CONFLICTING_BLOB_DATA).blobs[0],
+            blob_requests: Mutex::default(),
+        });
+        let router = Router::new()
+            .route("/eth/v1/beacon/genesis", get(|| async { Json(Self::genesis()) }))
+            .route(
+                "/eth/v1/config/spec",
+                get(|| async {
+                    let slot = BEACON_SECONDS_PER_SLOT.to_string();
+                    Json(serde_json::json!({ "data": { "SECONDS_PER_SLOT": slot } }))
+                }),
+            )
+            .route("/eth/v1/beacon/blobs/{block_id}", get(Self::blobs))
+            .with_state(Arc::clone(&state));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        Self { url, state }
+    }
+
+    pub(super) fn historical_blob(&self) -> Blob {
+        self.state.historical_blob
+    }
+
+    /// Block IDs of all blob requests received so far, in arrival order.
+    pub(super) fn blob_requests(&self) -> Vec<String> {
+        self.state.blob_requests.lock().unwrap().clone()
+    }
+
+    fn genesis() -> GenesisResponse {
+        GenesisResponse {
+            data: GenesisData {
+                genesis_time: BEACON_GENESIS_TIME_SECS,
+                genesis_validators_root: BEACON_GENESIS_VALIDATORS_ROOT,
+                genesis_fork_version: FixedBytes::from(BEACON_GENESIS_FORK_VERSION),
+            },
+        }
+    }
+
+    async fn blobs(
+        State(state): State<Arc<MockBeaconState>>,
+        Path(block_id): Path<String>,
+    ) -> Response {
+        state.blob_requests.lock().unwrap().push(block_id.clone());
+        let blobs = match block_id.as_str() {
+            "18" => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            "20" => vec![state.historical_blob],
+            "21" => vec![state.conflicting_blob],
+            _ => return StatusCode::NOT_FOUND.into_response(),
+        };
+        Json(GetBlobsResponse { execution_optimistic: false, finalized: true, data: blobs })
+            .into_response()
+    }
+}
+
+/// Origin execution node, mock Beacon upstream, and a target pinned to both at block 100.
+pub(super) struct BeaconTargetFixture {
+    pub(super) origin_api: EthApi,
+    pub(super) origin: NodeHandle,
+    pub(super) beacon: MockBeacon,
+    pub(super) api: EthApi,
+    pub(super) handle: NodeHandle,
+}
+
+impl BeaconTargetFixture {
+    pub(super) async fn spawn() -> Self {
+        let (origin_api, origin) = spawn(beacon_origin_config()).await;
+        let beacon = MockBeacon::spawn().await;
+        let (api, handle) =
+            spawn(beacon_target_config(origin.http_endpoint(), beacon.url.clone())).await;
+        Self { origin_api, origin, beacon, api, handle }
+    }
+
+    /// Mines one single-blob transaction per payload into one block at `timestamp`. Returns
+    /// hashes and sidecars in nonce order.
+    pub(super) async fn mine_blob_block(
+        &self,
+        timestamp: u64,
+        payloads: &[&[u8]],
+    ) -> Vec<(B256, BlobTransactionSidecar)> {
+        let provider = http_provider(&self.handle.http_endpoint());
+        let from = self.handle.dev_accounts().next().unwrap();
+        let mut sent = Vec::with_capacity(payloads.len());
+        for (nonce, payload) in payloads.iter().enumerate() {
+            let sidecar = beacon_sidecar(payload);
+            let tx = TransactionRequest::default()
+                .with_from(from)
+                .with_to(from)
+                .with_nonce(nonce as u64)
+                .with_gas_limit(21_000)
+                .with_max_fee_per_gas(10_000_000_000)
+                .with_max_priority_fee_per_gas(1_000_000_000)
+                .with_max_fee_per_blob_gas(10_000_000_000)
+                .with_blob_sidecar_4844(sidecar.clone());
+            let mut tx = WithOtherFields::new(tx);
+            tx.populate_blob_hashes();
+            let pending = provider.send_transaction(tx).await.unwrap();
+            sent.push((*pending.tx_hash(), sidecar));
+        }
+        self.api.evm_mine(Some(MineOptions::Timestamp(Some(timestamp)))).await.unwrap();
+        sent
+    }
+}
+
+/// Requests `/eth/v1/beacon/blobs/{block_id}`, which may include a query.
+async fn beacon_blobs(endpoint: &str, block_id: &str, ssz: bool) -> reqwest::Response {
+    let accept = if ssz { "application/octet-stream" } else { "application/json" };
+    let url = format!("{endpoint}/eth/v1/beacon/blobs/{block_id}");
+    reqwest::Client::new().get(url).header("accept", accept).send().await.unwrap()
+}
+
+async fn beacon_blobs_status(endpoint: &str, block_id: &str) -> StatusCode {
+    beacon_blobs(endpoint, block_id, false).await.status()
+}
+
+async fn beacon_blobs_json(endpoint: &str, block_id: &str) -> Vec<Blob> {
+    let response = beacon_blobs(endpoint, block_id, false).await;
+    assert_eq!(response.status(), StatusCode::OK, "JSON blobs for {block_id}");
+    response.json::<GetBlobsResponse>().await.unwrap().data
+}
+
+async fn beacon_blobs_ssz(endpoint: &str, block_id: &str) -> Vec<Blob> {
+    let response = beacon_blobs(endpoint, block_id, true).await;
+    assert_eq!(response.status(), StatusCode::OK, "SSZ blobs for {block_id}");
+    assert_eq!(response.headers()["content-type"], "application/octet-stream");
+    let body = response.bytes().await.unwrap();
+    // SSZ decoding of full blobs recurses deeply; use a larger stack like the test above.
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || Vec::<Blob>::from_ssz_bytes(&body))
+        .unwrap()
+        .join()
+        .unwrap()
+        .unwrap()
+}
+
+/// Asserts blob equality without dumping 128 KiB blobs on failure.
+fn assert_blobs_eq(actual: &[Blob], expected: &[Blob], context: &str) {
+    assert_eq!(actual.len(), expected.len(), "{context}: blob count");
+    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        assert!(actual == expected, "{context}: blob {index} bytes differ");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn beacon_api_upstream_metadata_is_stable_across_mining_modes() {
+    let fixture = BeaconTargetFixture::spawn().await;
+    let endpoint = fixture.handle.http_endpoint();
+    let get = |path: &str| {
+        let url = format!("{endpoint}/eth/v1/{path}");
+        async move { reqwest::get(url).await.unwrap().json::<serde_json::Value>().await.unwrap() }
+    };
+
+    // Mining starts paused; then switch through interval modes too long to fire, then pause.
+    for interval_secs in [None, Some(3_600), Some(7_200), Some(0)] {
+        if let Some(interval_secs) = interval_secs {
+            fixture.api.anvil_set_interval_mining(interval_secs).unwrap();
+        }
+        let genesis = serde_json::from_value::<GenesisResponse>(get("beacon/genesis").await);
+        assert_eq!(genesis.unwrap(), MockBeacon::genesis(), "genesis with {interval_secs:?}");
+        assert_eq!(
+            get("config/spec").await["data"]["SECONDS_PER_SLOT"],
+            BEACON_SECONDS_PER_SLOT.to_string(),
+            "spec with {interval_secs:?}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn beacon_api_numeric_ids_resolve_local_slots() {
+    let fixture = BeaconTargetFixture::spawn().await;
+    let endpoint = fixture.handle.http_endpoint();
+
+    // Slot 21 has no local block yet; the upstream's conflicting slot 21 must not be consulted.
+    assert_eq!(beacon_blobs_status(&endpoint, "21").await, StatusCode::NOT_FOUND);
+
+    let sent = fixture.mine_blob_block(beacon_slot_timestamp(21), &BEACON_LOCAL_BLOB_DATA).await;
+    let expected = [sent[0].1.blobs[0], sent[1].1.blobs[0]];
+    assert!(expected[0] != expected[1], "fixture blobs must be distinct");
+    assert_blobs_eq(&beacon_blobs_json(&endpoint, "21").await, &expected, "slot 21 JSON");
+    assert_blobs_eq(&beacon_blobs_ssz(&endpoint, "21").await, &expected, "slot 21 SSZ");
+
+    let second_hash = sent[1].1.versioned_hashes().next().unwrap();
+    let filtered =
+        beacon_blobs_json(&endpoint, &format!("21?versioned_hashes={second_hash}")).await;
+    assert_blobs_eq(&filtered, &expected[1..], "slot 21 filtered to second hash");
+    let partly_malformed = format!("21?versioned_hashes={second_hash},0xzz");
+    assert_eq!(beacon_blobs_status(&endpoint, &partly_malformed).await, StatusCode::BAD_REQUEST);
+
+    // Skip slot 22 and mine slot 23: the skipped slot is missing, not slot 21's blobs.
+    let at_23 = MineOptions::Timestamp(Some(beacon_slot_timestamp(23)));
+    fixture.api.evm_mine(Some(at_23)).await.unwrap();
+    assert_eq!(beacon_blobs_status(&endpoint, "22").await, StatusCode::NOT_FOUND);
+    assert!(beacon_blobs_json(&endpoint, "23").await.is_empty());
+    assert_eq!(fixture.beacon.blob_requests(), Vec::<String>::new(), "post-boundary upstream");
+
+    let reset = Forking { json_rpc_url: None, block_number: Some(BEACON_ORIGIN_BLOCK) };
+    assert!(fixture.api.anvil_reset(Some(reset)).await.is_err());
+    assert!(fixture.api.anvil_reset(None).await.is_err());
+    assert_eq!(fixture.api.block_number().unwrap(), U256::from(BEACON_ORIGIN_BLOCK + 2));
+    assert_blobs_eq(&beacon_blobs_json(&endpoint, "21").await, &expected, "slot 21 after reset");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn beacon_api_historical_slots_use_upstream() {
+    let fixture = BeaconTargetFixture::spawn().await;
+    let endpoint = fixture.handle.http_endpoint();
+    let expected = [fixture.beacon.historical_blob()];
+
+    // Slot 20 holds the pinned execution block itself, so it is upstream-owned.
+    assert_blobs_eq(&beacon_blobs_json(&endpoint, "20").await, &expected, "slot 20 JSON");
+    assert_blobs_eq(&beacon_blobs_ssz(&endpoint, "20").await, &expected, "slot 20 SSZ");
+    assert_eq!(fixture.beacon.blob_requests(), ["20", "20"]);
+
+    let status = beacon_blobs_status(&endpoint, "18").await;
+    assert!(status.is_server_error(), "upstream failure must not look missing, got {status}");
+    assert_eq!(beacon_blobs_status(&endpoint, "19").await, StatusCode::NOT_FOUND);
+    let malformed = "20?versioned_hashes=0x1234";
+    assert_eq!(beacon_blobs_status(&endpoint, malformed).await, StatusCode::BAD_REQUEST);
+    for invalid_slot in ["18446744073709551615", "latest", "0x15"] {
+        assert_eq!(beacon_blobs_status(&endpoint, invalid_slot).await, StatusCode::BAD_REQUEST);
+    }
+    assert_eq!(fixture.beacon.blob_requests(), ["20", "20", "18", "19"]);
+
+    // The mock ignores filters; the target must filter actual content itself.
+    let [historical, conflicting] = [BEACON_HISTORICAL_BLOB_DATA, BEACON_CONFLICTING_BLOB_DATA]
+        .map(|data| beacon_sidecar(data).versioned_hashes().next().unwrap());
+    let filtered = beacon_blobs_json(&endpoint, &format!("20?versioned_hashes={historical}")).await;
+    assert_blobs_eq(&filtered, &expected, "historical filter");
+    let filtered =
+        beacon_blobs_json(&endpoint, &format!("20?versioned_hashes={conflicting}")).await;
+    assert!(filtered.is_empty(), "conflicting filter");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn beacon_api_rejects_offgrid_and_reused_slot_timestamps() {
+    let fixture = BeaconTargetFixture::spawn().await;
+    let provider = http_provider(&fixture.handle.http_endpoint());
+    let mine_at = |timestamp| fixture.api.evm_mine(Some(MineOptions::Timestamp(Some(timestamp))));
+
+    assert!(mine_at(BEACON_ORIGIN_TIMESTAMP_SECS).await.is_err(), "reused boundary slot");
+    assert!(mine_at(beacon_slot_timestamp(21) + 1).await.is_err(), "off-grid timestamp");
+    assert_eq!(provider.get_block_number().await.unwrap(), BEACON_ORIGIN_BLOCK);
+
+    mine_at(beacon_slot_timestamp(21)).await.unwrap();
+    assert!(mine_at(beacon_slot_timestamp(21)).await.is_err(), "reused local slot");
+    let block = provider.get_block_by_number(BlockNumberOrTag::Latest).await.unwrap().unwrap();
+    assert_eq!(block.header.number, BEACON_ORIGIN_BLOCK + 1);
+    assert_eq!(block.header.timestamp, beacon_slot_timestamp(21));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn beacon_api_execution_reads_around_boundary() {
+    let fixture = BeaconTargetFixture::spawn().await;
+    let provider = http_provider(&fixture.handle.http_endpoint());
+    let origin_provider = http_provider(&fixture.origin.http_endpoint());
+
+    // Competing upstream continuation after the pinned block.
+    let at_25 = MineOptions::Timestamp(Some(beacon_slot_timestamp(25)));
+    fixture.origin_api.evm_mine(Some(at_25)).await.unwrap();
+    let origin_block = |number: u64| origin_provider.get_block(BlockId::number(number));
+    let origin_boundary = origin_block(BEACON_ORIGIN_BLOCK).await.unwrap().unwrap();
+    let remote_successor = origin_block(BEACON_ORIGIN_BLOCK + 1).await.unwrap().unwrap();
+
+    let sent = fixture.mine_blob_block(beacon_slot_timestamp(21), &BEACON_LOCAL_BLOB_DATA).await;
+    let sent_hashes = sent.iter().map(|(hash, _)| *hash).collect::<Vec<_>>();
+
+    // Boundary block F is the upstream block, by number and by hash.
+    let boundary = provider.get_block(BlockId::number(BEACON_ORIGIN_BLOCK)).await.unwrap().unwrap();
+    let boundary_hash = boundary.header.hash;
+    assert_eq!(boundary_hash, origin_boundary.header.hash);
+    let by_hash = provider.get_block(BlockId::hash(boundary_hash)).await.unwrap().unwrap();
+    assert_eq!(by_hash.header.number, BEACON_ORIGIN_BLOCK);
+    let by_hash = provider.get_block(BlockId::hash(boundary_hash)).full().await.unwrap().unwrap();
+    assert_eq!(by_hash.header.number, BEACON_ORIGIN_BLOCK);
+
+    // F+1 is the local blob block, by number and by hash.
+    let local =
+        provider.get_block(BlockId::number(BEACON_ORIGIN_BLOCK + 1)).await.unwrap().unwrap();
+    let local_hash = local.header.hash;
+    assert_ne!(local_hash, remote_successor.header.hash);
+    assert_eq!(local.header.parent_hash, boundary_hash);
+    let by_hash = provider.get_block(BlockId::hash(local_hash)).full().await.unwrap().unwrap();
+    assert_eq!(by_hash.header.number, BEACON_ORIGIN_BLOCK + 1);
+    assert_eq!(by_hash.transactions.hashes().collect::<Vec<_>>(), sent_hashes);
+    for hash in &sent_hashes {
+        let receipt = provider.get_transaction_receipt(*hash).await.unwrap().unwrap();
+        assert_eq!(receipt.block_hash, Some(local_hash));
+    }
+
+    // The upstream's post-boundary block is not part of the local chain.
+    let remote_hash = BlockId::hash(remote_successor.header.hash);
+    assert!(provider.get_block(remote_hash).await.unwrap().is_none(), "hashes lookup");
+    assert!(provider.get_block(remote_hash).full().await.unwrap().is_none(), "full lookup");
 }

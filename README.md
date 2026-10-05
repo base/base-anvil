@@ -40,6 +40,33 @@ This adds `base-foundryup` and the namespaced `base-forge`/`base-cast`/`base-anv
 - **Test your Base app with base-anvil:** [`docs/base.md`](./docs/base.md)
 - **Release model and the `base/base` pin (maintainers):** [`RELEASES.md`](./RELEASES.md)
 
+### Forked Ethereum L1 with Beacon blobs
+
+Build the `anvil` binary without `--base` when it is the Ethereum L1 for a separate rollup node:
+
+```bash
+cargo run -p anvil --bin anvil -- \
+  --fork-url "$L1_RPC_URL" --fork-block-number "$L1_FORK_BLOCK" \
+  --fork-beacon-url "$L1_BEACON_URL" --no-mining
+```
+
+The Beacon endpoint must provide genesis, `SECONDS_PER_SLOT`, and historical
+`/eth/v1/beacon/blobs/{slot}` responses for the required range. Choose matching execution and
+Beacon providers and preferably a finalized fork block; this is not an offline archive or a
+Beacon consensus implementation. Genesis and slot duration remain stable while mining is paused
+or its interval changes. Numeric Beacon IDs are slots, not execution block numbers. Historical
+slots through the fork block's slot use the upstream; later slots use only local blocks, and
+missing local slots never fall back to mainnet. JSON/SSZ and `versioned_hashes` filtering work on
+both sides of the boundary. Symbolic Beacon IDs and Beacon roots are unsupported in this mode.
+`anvil_reset` is rejected in this mode.
+
+Local timestamps stay on that slot grid and strictly advance. Explicit next timestamps must be
+aligned; timestamp intervals must be positive slot-duration multiples. Interval mining controls
+wall-clock pacing separately. After downtime, an orchestrator should set a current aligned next
+timestamp before enabling mining; do not move Beacon genesis to hide the gap. Extreme clock jumps
+are bounded to year 9999. Transaction-body pruning is incompatible with retaining local blobs.
+Safe/finalized tags remain Anvil's simulated block-depth policy, not Ethereum finality.
+
 Everything below is inherited from upstream Foundry and works unchanged; only the Base additions above are specific to this fork.
 
 ---

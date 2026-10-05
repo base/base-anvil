@@ -2188,8 +2188,14 @@ impl EthApi {
     ///
     /// Handler for RPC call: `anvil_reset`
     pub async fn anvil_reset(&self, forking: Option<Forking>) -> Result<()> {
-        self.reset_instance_id();
         node_info!("anvil_reset");
+        if self.backend.get_fork().is_some_and(|fork| fork.config.read().beacon.is_some()) {
+            return Err(RpcError::invalid_params(
+                "anvil_reset is unsupported with a fork Beacon URL",
+            )
+            .into());
+        }
+        self.reset_instance_id();
         if let Some(forking) = forking {
             // if we're resetting the fork we need to reset the instance id
             self.backend.reset_fork(forking).await

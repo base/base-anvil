@@ -1,6 +1,10 @@
 //! Support for forking off another client
 
-use crate::eth::{backend::db::Db, error::BlockchainError, pool::transactions::PoolTransaction};
+use crate::eth::{
+    backend::{beacon::ForkBeacon, db::Db},
+    error::BlockchainError,
+    pool::transactions::PoolTransaction,
+};
 use alloy_consensus::TrieAccount;
 use alloy_eips::eip2930::AccessListResult;
 use alloy_network::{AnyRpcBlock, AnyRpcTransaction, BlockResponse, TransactionResponse};
@@ -540,6 +544,15 @@ impl ClientFork {
         if let Some(block) = self.provider().get_block(block_id.into()).full().await? {
             let hash = block.header.hash;
             let block_number = block.header.number;
+            {
+                let config = self.config.read();
+                if config.beacon.is_some()
+                    && (block_number > config.block_number
+                        || (block_number == config.block_number && hash != config.block_hash))
+                {
+                    return Ok(None);
+                }
+            }
             let mut storage = self.storage_write();
             // also insert all transactions
             let block_txs = match block.transactions() {
@@ -657,6 +670,8 @@ pub struct ClientForkConfig {
     pub total_difficulty: U256,
     /// Transactions to force include in the forked chain
     pub force_transactions: Option<Vec<PoolTransaction>>,
+    /// Historical Beacon connectivity and slot identity, if enabled.
+    pub beacon: Option<ForkBeacon>,
 }
 
 impl ClientForkConfig {

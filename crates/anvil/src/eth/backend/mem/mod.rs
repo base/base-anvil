@@ -346,6 +346,14 @@ impl Backend {
             disable_pool_balance_checks,
         };
 
+        if let Some(fork) = backend.get_fork()
+            && let Some(beacon) = &fork.config.read().beacon
+        {
+            backend
+                .time
+                .set_beacon_slots(Some((beacon.genesis.genesis_time, beacon.seconds_per_slot)))?;
+        }
+
         if let Some(interval_block_time) = automine_block_time {
             backend.update_interval_mine_block_time(interval_block_time);
         }
@@ -3307,23 +3315,56 @@ impl Backend {
         id: impl Into<BlockId>,
         versioned_hashes: Vec<B256>,
     ) -> Result<Option<Vec<alloy_consensus::Blob>>> {
-        Ok(self.get_block(id).map(|block| {
-            block
-                .body
-                .transactions
-                .iter()
-                .filter_map(|tx| tx.as_ref().sidecar())
-                .flat_map(|sidecar| {
-                    sidecar.sidecar.blobs().iter().zip(sidecar.sidecar.commitments().iter())
-                })
-                .filter(|(_, commitment)| {
-                    // Filter blobs by versioned_hashes if provided
-                    versioned_hashes.is_empty()
-                        || versioned_hashes.contains(&kzg_to_versioned_hash(commitment.as_slice()))
-                })
-                .map(|(blob, _)| *blob)
-                .collect()
-        }))
+        Ok(self.get_block(id).map(|block| Self::block_blobs(&block, &versioned_hashes)))
+    }
+
+    /// Finds an exact canonical local timestamp, never the preceding block of a missed slot.
+    /// Local canonical timestamps must be strictly increasing, as enforced by Beacon slot mining.
+    pub fn get_blobs_by_timestamp(
+        &self,
+        timestamp: u64,
+        first_local_block: u64,
+        hashes: &[B256],
+    ) -> Result<Option<Vec<Blob>>> {
+        let storage = self.blockchain.storage.read();
+        let mut low = first_local_block;
+        let mut high = storage.best_number;
+        while low <= high {
+            let number = low + (high - low) / 2;
+            let block = storage
+                .hashes
+                .get(&number)
+                .and_then(|hash| storage.blocks.get(hash))
+                .ok_or_else(|| eyre::eyre!("canonical local block is unavailable"))?;
+            match block.header.timestamp.cmp(&timestamp) {
+                std::cmp::Ordering::Equal => return Ok(Some(Self::block_blobs(block, hashes))),
+                std::cmp::Ordering::Less => {
+                    let Some(next) = number.checked_add(1) else { break };
+                    low = next;
+                }
+                std::cmp::Ordering::Greater => {
+                    let Some(previous) = number.checked_sub(1) else { break };
+                    high = previous;
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn block_blobs(block: &Block, hashes: &[B256]) -> Vec<Blob> {
+        block
+            .body
+            .transactions
+            .iter()
+            .filter_map(|tx| tx.as_ref().sidecar())
+            .flat_map(|sidecar| {
+                sidecar.sidecar.blobs().iter().zip(sidecar.sidecar.commitments().iter())
+            })
+            .filter(|(_, commitment)| {
+                hashes.is_empty() || hashes.contains(&kzg_to_versioned_hash(commitment.as_slice()))
+            })
+            .map(|(blob, _)| *blob)
+            .collect()
     }
 
     pub fn get_blob_by_versioned_hash(&self, hash: B256) -> Result<Option<Blob>> {
