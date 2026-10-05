@@ -541,6 +541,26 @@ async fn beacon_state_boundary_load_restores_fees() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn beacon_state_load_restores_nonce_below_upstream() {
+    let fixture = BeaconTargetFixture::spawn().await;
+    let account = Address::repeat_byte(0x55);
+    fixture.origin_api.anvil_set_nonce(account, U256::from(5)).await.unwrap();
+    let endpoint = fixture.handle.http_endpoint();
+    assert_eq!(nonce(&endpoint, account).await, 5, "upstream nonce");
+    fixture.api.anvil_set_nonce(account, U256::ZERO).await.unwrap();
+    let dump = fixture.api.anvil_dump_state(None).await.unwrap();
+
+    let config = beacon_target_config(fixture.origin.http_endpoint(), fixture.beacon.url.clone());
+    let (restarted_api, restarted) = spawn(config).await;
+    for (api, endpoint, case) in
+        [(&fixture.api, endpoint, "live"), (&restarted_api, restarted.http_endpoint(), "restarted")]
+    {
+        api.anvil_load_state(dump.clone()).await.unwrap();
+        assert_eq!(nonce(&endpoint, account).await, 0, "{case} load nonce");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn beacon_state_load_keeps_fork_block_hash_without_upstream() {
     let fixture = BeaconTargetFixture::spawn().await;
     let endpoint = fixture.handle.http_endpoint();
