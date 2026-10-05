@@ -4,7 +4,7 @@ use crate::utils::http_provider_with_signer;
 use alloy_network::{EthereumWallet, TransactionBuilder};
 use alloy_primitives::{Address, U64, U256, uint};
 use alloy_provider::Provider;
-use alloy_rpc_types::{BlockId, TransactionRequest};
+use alloy_rpc_types::{BlockId, BlockNumberOrTag, TransactionRequest};
 use alloy_serde::WithOtherFields;
 use anvil::{NodeConfig, eth::fees::INITIAL_BASE_FEE, spawn};
 
@@ -214,6 +214,25 @@ async fn test_can_use_fee_history() {
 
         assert_eq!(latest_block.header.base_fee_per_gas.unwrap(), latest_fee_history_fee);
         assert_eq!(latest_fee_history_fee, next_base_fee as u64);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_fee_history_safe_finalized_use_slots_in_an_epoch() {
+    let (api, handle) = spawn(NodeConfig::test().with_slots_in_an_epoch(3)).await;
+    let provider = handle.http_provider();
+
+    // (blocks mined, expected safe, expected finalized); finalized saturates at genesis first
+    for (mined, safe, finalized) in [(4, 1, 0), (10, 7, 4)] {
+        while api.block_number().unwrap() < U256::from(mined) {
+            api.mine_one().await;
+        }
+        for (tag, expected) in
+            [(BlockNumberOrTag::Safe, safe), (BlockNumberOrTag::Finalized, finalized)]
+        {
+            let history = provider.get_fee_history(1, tag, &[]).await.unwrap();
+            assert_eq!(history.oldest_block, expected, "{tag} at block {mined}");
+        }
     }
 }
 
