@@ -138,6 +138,19 @@ impl ExtTester {
             if !status.success() {
                 panic!("git checkout failed: {status}");
             }
+
+            // Check out the submodules pinned by the selected revision.
+            if recursive {
+                for args in [&["sync", "--recursive"][..], &["update", "--init", "--recursive"]] {
+                    let mut git = Command::new("git");
+                    git.current_dir(root).arg("submodule").args(args);
+                    test_debug!("$ {git:?}");
+                    let status = git.status().unwrap();
+                    if !status.success() {
+                        panic!("git submodule {} failed: {status}", args[0]);
+                    }
+                }
+            }
         }
 
         (prj, test_cmd)
