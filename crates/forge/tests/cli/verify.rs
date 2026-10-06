@@ -313,16 +313,24 @@ forgetest!(can_verify_random_contract_sepolia_default_sourcify, |prj, cmd| {
 
 // Tests that verify properly validates verifier arguments.
 // <https://github.com/foundry-rs/foundry/issues/11430>
-forgetest_init!(can_validate_verifier_settings, |prj, cmd| {
+forgetest_async!(can_validate_verifier_settings, |prj, cmd| {
+    foundry_test_utils::util::initialize(prj.root());
     prj.initialize_default_contracts();
+    // A local solc reports full build metadata; with an explicit compilation profile (which skips
+    // the cache lookup that drops it), verify never needs the remote solc release list.
+    prj.update_config(|config| {
+        config.solc = Some(foundry_config::SolcReq::Local(svm::version_binary(
+            foundry_test_utils::util::SOLC_VERSION,
+        )));
+    });
     // Build the project to create the cache.
     cmd.forge_fuse().arg("build").assert_success();
     // No verifier URL.
     cmd.forge_fuse()
         .args([
             "verify-contract",
-            "--rpc-url",
-            "https://rpc.sepolia-api.lisk.com",
+            "--chain",
+            "4202",
             "--verifier",
             "blockscout",
             "0x19b248616E4964f43F611b5871CE1250f360E9d3",
@@ -338,8 +346,8 @@ Error: No verifier URL specified for verifier blockscout
     cmd.forge_fuse()
         .args([
             "verify-contract",
-            "--rpc-url",
-            "https://rpc.sepolia-api.lisk.com",
+            "--chain",
+            "4202",
             "--verifier",
             "etherscan",
             "0x19b248616E4964f43F611b5871CE1250f360E9d3",
@@ -353,7 +361,34 @@ Error: No known Etherscan API URL for chain `4202`. To fix this, please:
 
 "#]]);
 
-    cmd.forge_fuse().args(["verify-contract", "--rpc-url", "https://rpc.sepolia-api.lisk.com", "--verifier", "blockscout", "--verifier-url", "https://sepolia-blockscout.lisk.com/api", "0x19b248616E4964f43F611b5871CE1250f360E9d3", "src/Counter.sol:Counter"]).assert_success().stdout_eq(str![[r#"
+    let app = axum::Router::new().route(
+        "/api",
+        axum::routing::get(
+            |axum::extract::Query(q): axum::extract::Query<
+                std::collections::HashMap<String, String>,
+            >| async move {
+                let expected = q.get("module").is_some_and(|m| m == "contract")
+                    && q.get("action").is_some_and(|a| a == "getabi")
+                    && q.get("address").is_some_and(|a| {
+                        a.eq_ignore_ascii_case("0x19b248616E4964f43F611b5871CE1250f360E9d3")
+                    });
+                if expected {
+                    Ok(axum::Json(
+                        serde_json::json!({"status": "1", "message": "OK", "result": "[]"}),
+                    ))
+                } else {
+                    Err((axum::http::StatusCode::BAD_REQUEST, format!("unexpected query: {q:?}")))
+                }
+            },
+        ),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let verifier_url = format!("http://{}/api", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    cmd.forge_fuse().args(["verify-contract", "--chain", "4202", "--verifier", "blockscout", "--verifier-url", &verifier_url, "--compilation-profile", "default", "0x19b248616E4964f43F611b5871CE1250f360E9d3", "src/Counter.sol:Counter"]).assert_success().stdout_eq(str![[r#"
 Start verifying contract `0x19b248616E4964f43F611b5871CE1250f360E9d3` deployed on 4202
 
 Contract [src/Counter.sol:Counter] "0x19b248616E4964f43F611b5871CE1250f360E9d3" is already verified. Skipping verification.
