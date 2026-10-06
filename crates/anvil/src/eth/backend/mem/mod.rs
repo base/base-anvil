@@ -7,7 +7,7 @@ use crate::{
     eth::{
         backend::{
             cheats::{CheatEcrecover, CheatsManager},
-            db::{Db, MaybeFullDatabase, SerializableState, StateDb},
+            db::{Db, MaybeFullDatabase, SerializableForkBeacon, SerializableState, StateDb},
             env::Env,
             executor::{ExecutedTransactions, TransactionExecutor},
             fork::ClientFork,
@@ -1106,6 +1106,22 @@ impl Backend {
         self.active_state_snapshots.lock().clone().into_iter().collect()
     }
 
+    /// Identity of the original fork boundary, not the current local tip.
+    fn fork_beacon_identity(&self) -> Option<SerializableForkBeacon> {
+        let fork = self.get_fork()?;
+        let config = fork.config.read();
+        let beacon = config.beacon.as_ref()?;
+        Some(SerializableForkBeacon {
+            chain_id: self.env.read().evm_env.cfg_env.chain_id,
+            block_number: config.block_number,
+            block_hash: config.block_hash,
+            timestamp: config.timestamp,
+            genesis: beacon.genesis.clone(),
+            seconds_per_slot: beacon.seconds_per_slot,
+            slots_in_an_epoch: self.slots_in_an_epoch,
+        })
+    }
+
     /// Get the current state.
     pub async fn serialized_state(
         &self,
@@ -1122,17 +1138,18 @@ impl Backend {
             None
         };
 
-        let state = self.db.read().await.dump_state(
-            at,
-            best_number,
-            blocks,
-            transactions,
-            historical_states,
-        )?;
-        state.ok_or_else(|| {
-            RpcError::invalid_params("Dumping state not supported with the current configuration")
-                .into()
-        })
+        let mut state = self
+            .db
+            .read()
+            .await
+            .dump_state(at, best_number, blocks, transactions, historical_states)?
+            .ok_or_else(|| {
+                RpcError::invalid_params(
+                    "Dumping state not supported with the current configuration",
+                )
+            })?;
+        state.fork_beacon = self.fork_beacon_identity();
+        Ok(state)
     }
 
     /// Write all chain data to serialized bytes buffer
@@ -1151,6 +1168,19 @@ impl Backend {
     /// Apply [SerializableState] data to the backend storage.
     pub async fn load_state(&self, state: SerializableState) -> Result<bool, BlockchainError> {
         let _mining_guard = self.mining.lock().await;
+        let identity = self.fork_beacon_identity();
+        if state.fork_beacon != identity {
+            return Err(RpcError::invalid_params(
+                "State dump Beacon identity does not match the configured fork, chain or finality settings",
+            ).into());
+        }
+        if identity.is_some() {
+            // Loading merges accounts and history; a Beacon fork needs a validated replacement.
+            return Err(RpcError::invalid_params(
+                "Loading state is not supported with a Beacon upstream",
+            )
+            .into());
+        }
         // load the blocks and transactions into the storage
         self.blockchain.storage.write().load_blocks(state.blocks.clone());
         self.blockchain.storage.write().load_transactions(state.transactions.clone());

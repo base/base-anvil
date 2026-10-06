@@ -456,28 +456,39 @@ impl BeaconTargetFixture {
         timestamp: u64,
         payloads: &[&[u8]],
     ) -> Vec<(B256, BlobTransactionSidecar)> {
-        let provider = http_provider(&self.handle.http_endpoint());
         let from = self.handle.dev_accounts().next().unwrap();
-        let mut sent = Vec::with_capacity(payloads.len());
-        for (nonce, payload) in payloads.iter().enumerate() {
-            let sidecar = beacon_sidecar(payload);
-            let tx = TransactionRequest::default()
-                .with_from(from)
-                .with_to(from)
-                .with_nonce(nonce as u64)
-                .with_gas_limit(21_000)
-                .with_max_fee_per_gas(10_000_000_000)
-                .with_max_priority_fee_per_gas(1_000_000_000)
-                .with_max_fee_per_blob_gas(10_000_000_000)
-                .with_blob_sidecar_4844(sidecar.clone());
-            let mut tx = WithOtherFields::new(tx);
-            tx.populate_blob_hashes();
-            let pending = provider.send_transaction(tx).await.unwrap();
-            sent.push((*pending.tx_hash(), sidecar));
-        }
+        let sent = send_blob_txs(&self.handle.http_endpoint(), from, 0, payloads).await;
         self.api.evm_mine(Some(MineOptions::Timestamp(Some(timestamp)))).await.unwrap();
         sent
     }
+}
+
+/// Submits one single-blob transaction per payload with consecutive nonces, without mining.
+pub(super) async fn send_blob_txs(
+    endpoint: &str,
+    from: Address,
+    first_nonce: u64,
+    payloads: &[&[u8]],
+) -> Vec<(B256, BlobTransactionSidecar)> {
+    let provider = http_provider(endpoint);
+    let mut sent = Vec::with_capacity(payloads.len());
+    for (nonce, payload) in (first_nonce..).zip(payloads) {
+        let sidecar = beacon_sidecar(payload);
+        let tx = TransactionRequest::default()
+            .with_from(from)
+            .with_to(from)
+            .with_nonce(nonce)
+            .with_gas_limit(21_000)
+            .with_max_fee_per_gas(10_000_000_000)
+            .with_max_priority_fee_per_gas(1_000_000_000)
+            .with_max_fee_per_blob_gas(10_000_000_000)
+            .with_blob_sidecar_4844(sidecar.clone());
+        let mut tx = WithOtherFields::new(tx);
+        tx.populate_blob_hashes();
+        let pending = provider.send_transaction(tx).await.unwrap();
+        sent.push((*pending.tx_hash(), sidecar));
+    }
+    sent
 }
 
 /// Requests `/eth/v1/beacon/blobs/{block_id}`, which may include a query.

@@ -72,6 +72,7 @@ impl Db for MemDb {
             blocks,
             transactions,
             historical_states,
+            fork_beacon: None,
         }))
     }
 
