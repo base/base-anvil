@@ -359,7 +359,10 @@ impl Backend {
         }
 
         // Note: this can only fail in forking mode, in which case we can't recover
-        backend.apply_genesis().await.wrap_err("failed to create genesis")?;
+        backend
+            .apply_genesis(&backend.db, backend.is_fork())
+            .await
+            .wrap_err("failed to create genesis")?;
         Ok(backend)
     }
 
@@ -411,14 +414,18 @@ impl Backend {
     /// Applies the configured genesis settings
     ///
     /// This will fund, create the genesis accounts
-    async fn apply_genesis(&self) -> Result<(), DatabaseError> {
+    async fn apply_genesis(
+        &self,
+        db: &Arc<AsyncRwLock<Box<dyn Db>>>,
+        forked: bool,
+    ) -> Result<(), DatabaseError> {
         trace!(target: "backend", "setting genesis balances");
 
-        if self.fork.read().is_some() {
+        if forked {
             // fetch all account first
             let mut genesis_accounts_futures = Vec::with_capacity(self.genesis.accounts.len());
             for address in self.genesis.accounts.iter().copied() {
-                let db = Arc::clone(&self.db);
+                let db = Arc::clone(db);
 
                 // The forking Database backend can handle concurrent requests, we can fetch all dev
                 // accounts concurrently by spawning the job to a new task
@@ -431,7 +438,7 @@ impl Backend {
 
             let genesis_accounts = futures::future::join_all(genesis_accounts_futures).await;
 
-            let mut db = self.db.write().await;
+            let mut db = db.write().await;
 
             for res in genesis_accounts {
                 let (address, mut info) = res.unwrap()?;
@@ -439,7 +446,7 @@ impl Backend {
                 db.insert_account(address, info.clone());
             }
         } else {
-            let mut db = self.db.write().await;
+            let mut db = db.write().await;
             for (account, info) in self.genesis.account_infos() {
                 db.insert_account(account, info);
             }
@@ -449,9 +456,8 @@ impl Backend {
             db.insert_block_hash(U256::from(self.best_number()), self.best_hash());
         }
 
-        let db = self.db.write().await;
         // apply the genesis.json alloc
-        self.genesis.apply_genesis_json_alloc(db)?;
+        self.genesis.apply_genesis_json_alloc(db.write().await)?;
 
         // Seed Base's activation-gated features (B20Asset, B20Stablecoin,
         // PolicyRegistry) as active so a standalone `anvil --base` node matches a
@@ -460,10 +466,10 @@ impl Backend {
         // in fork mode, where the live chain already carries real activation state
         // that seeding would clobber. No-op unless `--base` is set
         // (`base_activation_seeds` returns empty otherwise).
-        if self.fork.read().is_none() {
+        if !forked {
             let seeds = self.env.read().networks.base_activation_seeds();
             if !seeds.is_empty() {
-                let mut db = self.db.write().await;
+                let mut db = db.write().await;
                 for (address, slot, value) in seeds {
                     db.set_storage_at(
                         address,
@@ -526,6 +532,10 @@ impl Backend {
 
     /// Resets the fork to a fresh state
     pub async fn reset_fork(&self, forking: Forking) -> Result<(), BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
+        if self.node_config.read().await.fork_beacon_url.is_some() {
+            return self.reset_beacon_fork(forking).await;
+        }
         if !self.is_fork() {
             if let Some(eth_rpc_url) = forking.clone().json_rpc_url {
                 let mut env = self.env.read().clone();
@@ -620,7 +630,7 @@ impl Backend {
             self.states.write().clear();
             self.db.write().await.clear();
 
-            self.apply_genesis().await?;
+            self.apply_genesis(&self.db, self.is_fork()).await?;
 
             trace!(target: "backend", "reset fork");
 
@@ -630,10 +640,68 @@ impl Backend {
         }
     }
 
+    /// Prepares both upstreams before replacing a Beacon-enabled fork. A failed upstream
+    /// read must not leave the execution database on a different fork from the slot schedule.
+    /// The caller must hold the mining lock.
+    async fn reset_beacon_fork(&self, forking: Forking) -> Result<(), BlockchainError> {
+        if !self.is_fork() && forking.json_rpc_url.is_none() {
+            return Err(RpcError::invalid_params(
+                "Forking not enabled and RPC URL not provided to start forking",
+            )
+            .into());
+        }
+        let mut config = self.node_config.read().await.clone();
+        let url = forking
+            .json_rpc_url
+            .or_else(|| config.eth_rpc_url.clone())
+            .ok_or_else(|| RpcError::invalid_params("Execution fork URL is required"))?;
+        config.eth_rpc_url = Some(url.clone());
+        config.fork_choice = forking.block_number.map(|number| ForkChoice::Block(number as i128));
+        config.base_fee = None;
+        config.gas_price = None;
+        let mut env = self.env.read().clone();
+        let fees = FeeManager::new(
+            self.spec_id(),
+            self.fees.base_fee(),
+            self.fees.is_min_priority_fee_enforced(),
+            self.fees.raw_gas_price(),
+            config.get_blob_excess_gas_and_price(),
+            self.fees.blob_params(),
+            self.fees.base_fee_params(),
+        );
+        let (db, fork_config) = config.setup_fork_db_config(url, &mut env, &fees).await?;
+        let db: Arc<AsyncRwLock<Box<dyn Db>>> = Arc::new(AsyncRwLock::new(Box::new(db)));
+        self.apply_genesis(&db, true).await?;
+        let beacon = fork_config.beacon.as_ref().expect("Beacon URL is configured");
+        self.time.set_beacon_slots(Some((beacon.genesis.genesis_time, beacon.seconds_per_slot)))?;
+        self.time.reset(fork_config.timestamp);
+        std::mem::swap(&mut *self.db.write().await, &mut *db.write().await);
+        *self.env.write() = env;
+        *self.blockchain.storage.write() = BlockchainStorage::forked(
+            fork_config.block_number,
+            fork_config.block_hash,
+            fork_config.total_difficulty,
+        );
+        *self.fork.write() = Some(ClientFork::new(fork_config, Arc::clone(&self.db)));
+        self.fees.set_base_fee(fees.base_fee());
+        self.fees.set_gas_price(fees.raw_gas_price());
+        self.fees.set_blob_params(fees.blob_params());
+        if let Some(blob_fees) = fees.excess_blob_gas_and_price() {
+            self.fees.set_blob_excess_gas_and_price(blob_fees);
+        }
+        self.states.write().clear();
+        self.active_state_snapshots.lock().clear();
+        *self.node_config.write().await = config;
+        Ok(())
+    }
+
     /// Resets the backend to a fresh in-memory state, clearing all existing data
     pub async fn reset_to_in_mem(&self) -> Result<(), BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         // Clear the fork if any exists
         *self.fork.write() = None;
+        self.time.set_beacon_slots(None)?;
+        self.active_state_snapshots.lock().clear();
 
         // Get environment and genesis config
         let env = self.env.read().clone();
@@ -671,7 +739,7 @@ impl Backend {
         self.fees.set_gas_price(crate::eth::fees::INITIAL_GAS_PRICE);
 
         // Reapply genesis configuration
-        self.apply_genesis().await?;
+        self.apply_genesis(&self.db, self.is_fork()).await?;
 
         trace!(target: "backend", "reset to fresh in-memory state");
 
@@ -977,6 +1045,7 @@ impl Backend {
     ///
     /// Returns the id of the snapshot created.
     pub async fn create_state_snapshot(&self) -> U256 {
+        let _mining_guard = self.mining.lock().await;
         let num = self.best_number();
         let hash = self.best_hash();
         let id = self.db.write().await.snapshot_state();
@@ -987,6 +1056,7 @@ impl Backend {
 
     /// Reverts the state to the state snapshot identified by the given `id`.
     pub async fn revert_state_snapshot(&self, id: U256) -> Result<bool, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         let block = { self.active_state_snapshots.lock().remove(&id) };
         if let Some((num, hash)) = block {
             let best_block_hash = {
@@ -1041,6 +1111,7 @@ impl Backend {
         &self,
         preserve_historical_states: bool,
     ) -> Result<SerializableState, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         let at = self.env.read().evm_env.block_env.clone();
         let best_number = self.blockchain.storage.read().best_number;
         let blocks = self.blockchain.storage.read().serialized_blocks();
@@ -1079,6 +1150,7 @@ impl Backend {
 
     /// Apply [SerializableState] data to the backend storage.
     pub async fn load_state(&self, state: SerializableState) -> Result<bool, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         // load the blocks and transactions into the storage
         self.blockchain.storage.write().load_blocks(state.blocks.clone());
         self.blockchain.storage.write().load_transactions(state.transactions.clone());
@@ -3514,6 +3586,7 @@ impl Backend {
     /// The state of the chain is rewound using `rewind` to the common block, including the db,
     /// storage, and env.
     pub async fn rollback(&self, common_block: Block) -> Result<(), BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         // Get the database at the common block
         let common_state = {
             let return_state_or_throw_err =

@@ -58,7 +58,8 @@ or its interval changes. Numeric Beacon IDs are slots, not execution block numbe
 slots through the fork block's slot use the upstream; later slots use only local blocks, and
 missing local slots never fall back to mainnet. JSON/SSZ and `versioned_hashes` filtering work on
 both sides of the boundary. Symbolic Beacon IDs and Beacon roots are unsupported in this mode.
-`anvil_reset` is rejected in this mode.
+`anvil_reset` prepares both upstreams before replacing the fork, so a failed read keeps the current
+fork; resetting to in-memory mode leaves Beacon mode.
 
 Local timestamps stay on that slot grid and strictly advance. Explicit next timestamps must be
 aligned; timestamp intervals must be positive slot-duration multiples. Interval mining controls
