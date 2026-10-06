@@ -257,6 +257,7 @@ impl NodeArgs {
             .fork_retry_backoff(self.evm.fork_retry_backoff.map(Duration::from_millis))
             .fork_compute_units_per_second(compute_units_per_second)
             .with_eth_rpc_url(self.evm.fork_url.map(|fork| fork.url))
+            .with_fork_beacon_url(self.evm.fork_beacon_url)
             .with_base_fee(self.evm.block_base_fee_per_gas)
             .disable_min_priority_fee(self.evm.disable_min_priority_fee)
             .with_storage_caching(self.evm.no_storage_caching)
@@ -419,6 +420,12 @@ pub struct AnvilEvmArgs {
         help_heading = "Fork config"
     )]
     pub fork_url: Option<ForkUrl>,
+
+    /// Serve historical Beacon blobs through the fork block and mine local L1 blocks on
+    /// the upstream Beacon slot grid. Requires an HTTP(S) Beacon endpoint with genesis,
+    /// spec, and historical blobs APIs.
+    #[arg(long, value_name = "URL", help_heading = "Fork config", requires = "fork_url")]
+    pub fork_beacon_url: Option<String>,
 
     /// Headers to use for the rpc client, e.g. "User-Agent: test-agent"
     ///
@@ -799,6 +806,26 @@ fn duration_from_secs_f64(s: &str) -> Result<Duration, String> {
 mod tests {
     use super::*;
     use std::{env, net::Ipv4Addr};
+
+    #[test]
+    fn beacon_url_requires_execution_url_and_reaches_config() {
+        assert!(
+            NodeArgs::try_parse_from(["anvil", "--fork-beacon-url", "http://localhost:5052"])
+                .is_err()
+        );
+        let config = NodeArgs::try_parse_from([
+            "anvil",
+            "--fork-url",
+            "http://localhost:8545",
+            "--fork-beacon-url",
+            "http://localhost:5052",
+        ])
+        .unwrap()
+        .into_node_config()
+        .unwrap();
+        assert_eq!(config.fork_beacon_url.as_deref(), Some("http://localhost:5052"));
+        assert_eq!(config.eth_rpc_url.as_deref(), Some("http://localhost:8545"));
+    }
 
     #[test]
     fn test_parse_fork_url() {

@@ -1702,16 +1702,7 @@ impl EthApi {
         node_info!("eth_feeHistory");
         // max number of blocks in the requested range
 
-        let current = self.backend.best_number();
-        let slots_in_an_epoch = 32u64;
-
-        let number = match newest_block {
-            BlockNumber::Latest | BlockNumber::Pending => current,
-            BlockNumber::Earliest => 0,
-            BlockNumber::Number(n) => n,
-            BlockNumber::Safe => current.saturating_sub(slots_in_an_epoch),
-            BlockNumber::Finalized => current.saturating_sub(slots_in_an_epoch * 2),
-        };
+        let number = self.backend.convert_block_number(Some(newest_block));
 
         // check if the number predates the fork, if in fork mode
         if let Some(fork) = self.get_fork() {
@@ -2197,8 +2188,14 @@ impl EthApi {
     ///
     /// Handler for RPC call: `anvil_reset`
     pub async fn anvil_reset(&self, forking: Option<Forking>) -> Result<()> {
-        self.reset_instance_id();
         node_info!("anvil_reset");
+        if self.backend.get_fork().is_some_and(|fork| fork.config.read().beacon.is_some()) {
+            return Err(RpcError::invalid_params(
+                "anvil_reset is unsupported with a fork Beacon URL",
+            )
+            .into());
+        }
+        self.reset_instance_id();
         if let Some(forking) = forking {
             // if we're resetting the fork we need to reset the instance id
             self.backend.reset_fork(forking).await
