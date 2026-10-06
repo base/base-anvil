@@ -881,19 +881,25 @@ async fn test_mine_blk_with_prev_timestamp() {
     assert!(third_blk_timestamp > next_blk_timestamp);
 }
 
-// increase time by 0 seconds i.e next_block_timestamp = prev_block_timestamp
-// api.evm_increase_time(0).unwrap();
+// increase time by 0 seconds leaves the existing offset unchanged; the next block timestamp is
+// pinned explicitly because the default timestamp still tracks wall-clock time.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_increase_time_by_zero() {
-    let (api, handle) = spawn(NodeConfig::test()).await;
+    let (api, handle) = spawn(NodeConfig::test().with_genesis_timestamp(Some(1_000u64))).await;
     let provider = handle.http_provider();
 
     let init_blk = provider.get_block(BlockId::latest()).await.unwrap().unwrap();
 
     let init_number = init_blk.header.number;
     let init_timestamp = init_blk.header.timestamp;
+    let init_offset = api.backend.time().offset();
+    assert_ne!(init_offset, 0);
 
-    let _ = api.evm_increase_time(U256::ZERO).await;
+    api.evm_set_next_block_timestamp(init_timestamp).unwrap();
+
+    let offset = api.evm_increase_time(U256::ZERO).await.unwrap();
+    assert_eq!(i128::from(offset), init_offset);
+    assert_eq!(api.backend.time().offset(), init_offset);
 
     api.mine_one().await;
 
