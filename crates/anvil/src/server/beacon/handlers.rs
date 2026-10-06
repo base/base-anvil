@@ -1,4 +1,7 @@
-use super::{error::BeaconError, utils::must_be_ssz};
+use super::{
+    error::{BeaconError, BeaconErrorCode},
+    utils::must_be_ssz,
+};
 use crate::eth::EthApi;
 use alloy_eips::BlockId;
 use alloy_primitives::{B256, aliases::B32};
@@ -45,13 +48,17 @@ pub async fn handle_get_blobs(
 
     // Parse indices from query parameters
     // Supports both comma-separated (?indices=1,2,3) and repeated parameters (?indices=1&indices=2)
-    let versioned_hashes: Vec<B256> = versioned_hashes
+    let Ok(versioned_hashes) = versioned_hashes
         .get("versioned_hashes")
-        .map(|s| s.split(',').filter_map(|hash| B256::from_str(hash.trim()).ok()).collect())
-        .unwrap_or_default();
+        .map(|s| s.split(',').map(|hash| B256::from_str(hash.trim())).collect())
+        .transpose()
+    else {
+        return BeaconError::new(BeaconErrorCode::BadRequest, "Invalid versioned_hashes")
+            .into_response();
+    };
 
     // Get the blob sidecars using existing EthApi logic
-    match api.anvil_get_blobs_by_block_id(block_id, versioned_hashes) {
+    match api.anvil_get_blobs_by_block_id(block_id, versioned_hashes.unwrap_or_default()) {
         Ok(Some(blobs)) => {
             if must_be_ssz(&headers) {
                 blobs.as_ssz_bytes().into_response()

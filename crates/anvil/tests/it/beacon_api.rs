@@ -218,6 +218,17 @@ async fn test_beacon_api_get_blobs() {
         "Expected 0 blobs when filtering by non-existent versioned_hash"
     );
 
+    // Ignoring invalid filters would broaden the request
+    let partly_invalid = format!("{},0xzz", actual_versioned_hashes[0]);
+    for filter in ["0x1234", "not-a-hash", "", partly_invalid.as_str()] {
+        let url = format!(
+            "{}/eth/v1/beacon/blobs/{block_number}?versioned_hashes={filter}",
+            handle.http_endpoint()
+        );
+        let response = client.get(&url).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST, "filter {filter:?}");
+    }
+
     // Test with special block identifiers
     let test_ids = vec!["latest", "finalized", "safe", "earliest"];
     for block_id in test_ids {
