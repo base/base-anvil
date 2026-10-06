@@ -607,9 +607,9 @@ forgetest_init!(sync_on_forge_update, |prj, cmd| {
     let forge_std_path = prj.root().join("lib/forge-std");
     let git = Git::new(&forge_std_path);
 
-    // Ensure we're on the release tag first (known starting point)
+    // Ensure we're on the pinned revision first (known starting point)
     git.checkout(false, forge_std.name()).unwrap();
-    assert_eq!(git.head().unwrap(), forge_std.rev(), "Forge std should be at the release tag");
+    assert_eq!(git.head().unwrap(), forge_std.rev(), "Forge std should be at the pinned revision");
 
     // Make sure origin/master is up to date, then resolve its commit hash deterministically.
     git.fetch(false, "origin", Some("master")).unwrap();
@@ -617,8 +617,7 @@ forgetest_init!(sync_on_forge_update, |prj, cmd| {
 
     // Run update and assert the output matches the dynamically resolved hash.
     let expected_output = format!(
-        "Updated dep at 'lib/forge-std', (from: tag={}@{}, to: branch=master@{})\n",
-        forge_std.name(),
+        "Updated dep at 'lib/forge-std', (from: rev={}, to: branch=master@{})\n",
         forge_std.rev(),
         origin_master_head
     );
