@@ -502,13 +502,13 @@ async fn beacon_blobs_status(endpoint: &str, block_id: &str) -> StatusCode {
     beacon_blobs(endpoint, block_id, false).await.status()
 }
 
-async fn beacon_blobs_json(endpoint: &str, block_id: &str) -> Vec<Blob> {
+pub(super) async fn beacon_blobs_json(endpoint: &str, block_id: &str) -> Vec<Blob> {
     let response = beacon_blobs(endpoint, block_id, false).await;
     assert_eq!(response.status(), StatusCode::OK, "JSON blobs for {block_id}");
     response.json::<GetBlobsResponse>().await.unwrap().data
 }
 
-async fn beacon_blobs_ssz(endpoint: &str, block_id: &str) -> Vec<Blob> {
+pub(super) async fn beacon_blobs_ssz(endpoint: &str, block_id: &str) -> Vec<Blob> {
     let response = beacon_blobs(endpoint, block_id, true).await;
     assert_eq!(response.status(), StatusCode::OK, "SSZ blobs for {block_id}");
     assert_eq!(response.headers()["content-type"], "application/octet-stream");
@@ -524,7 +524,7 @@ async fn beacon_blobs_ssz(endpoint: &str, block_id: &str) -> Vec<Blob> {
 }
 
 /// Asserts blob equality without dumping 128 KiB blobs on failure.
-fn assert_blobs_eq(actual: &[Blob], expected: &[Blob], context: &str) {
+pub(super) fn assert_blobs_eq(actual: &[Blob], expected: &[Blob], context: &str) {
     assert_eq!(actual.len(), expected.len(), "{context}: blob count");
     for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
         assert!(actual == expected, "{context}: blob {index} bytes differ");
