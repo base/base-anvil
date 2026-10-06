@@ -152,14 +152,20 @@ pub trait Db:
 
     /// Deserialize and add all chain data to the backend storage
     fn load_state(&mut self, state: SerializableState) -> DatabaseResult<bool> {
+        // A Beacon load replaces state, so a nonce set below the upstream's must stay exact.
+        let replace = state.fork_beacon.is_some();
         for (addr, account) in state.accounts.into_iter() {
-            let old_account_nonce = DatabaseRef::basic_ref(self, addr)
-                .ok()
-                .and_then(|acc| acc.map(|acc| acc.nonce))
-                .unwrap_or_default();
-            // use max nonce in case account is imported multiple times with difference
-            // nonces to prevent collisions
-            let nonce = std::cmp::max(old_account_nonce, account.nonce);
+            let nonce = if replace {
+                account.nonce
+            } else {
+                let old_account_nonce = DatabaseRef::basic_ref(self, addr)
+                    .ok()
+                    .and_then(|acc| acc.map(|acc| acc.nonce))
+                    .unwrap_or_default();
+                // use max nonce in case account is imported multiple times with difference
+                // nonces to prevent collisions
+                std::cmp::max(old_account_nonce, account.nonce)
+            };
 
             self.insert_account(
                 addr,
