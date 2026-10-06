@@ -518,6 +518,7 @@ impl Backend {
 
     /// Resets the fork to a fresh state
     pub async fn reset_fork(&self, forking: Forking) -> Result<(), BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         if !self.is_fork() {
             if let Some(eth_rpc_url) = forking.clone().json_rpc_url {
                 let mut env = self.env.read().clone();
@@ -624,6 +625,7 @@ impl Backend {
 
     /// Resets the backend to a fresh in-memory state, clearing all existing data
     pub async fn reset_to_in_mem(&self) -> Result<(), BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         // Clear the fork if any exists
         *self.fork.write() = None;
 
@@ -969,6 +971,7 @@ impl Backend {
     ///
     /// Returns the id of the snapshot created.
     pub async fn create_state_snapshot(&self) -> U256 {
+        let _mining_guard = self.mining.lock().await;
         let num = self.best_number();
         let hash = self.best_hash();
         let id = self.db.write().await.snapshot_state();
@@ -979,6 +982,7 @@ impl Backend {
 
     /// Reverts the state to the state snapshot identified by the given `id`.
     pub async fn revert_state_snapshot(&self, id: U256) -> Result<bool, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         let block = { self.active_state_snapshots.lock().remove(&id) };
         if let Some((num, hash)) = block {
             let best_block_hash = {
@@ -1033,6 +1037,7 @@ impl Backend {
         &self,
         preserve_historical_states: bool,
     ) -> Result<SerializableState, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         let at = self.env.read().evm_env.block_env.clone();
         let best_number = self.blockchain.storage.read().best_number;
         let blocks = self.blockchain.storage.read().serialized_blocks();
@@ -1071,6 +1076,7 @@ impl Backend {
 
     /// Apply [SerializableState] data to the backend storage.
     pub async fn load_state(&self, state: SerializableState) -> Result<bool, BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         // load the blocks and transactions into the storage
         self.blockchain.storage.write().load_blocks(state.blocks.clone());
         self.blockchain.storage.write().load_transactions(state.transactions.clone());
@@ -3469,6 +3475,7 @@ impl Backend {
     /// The state of the chain is rewound using `rewind` to the common block, including the db,
     /// storage, and env.
     pub async fn rollback(&self, common_block: Block) -> Result<(), BlockchainError> {
+        let _mining_guard = self.mining.lock().await;
         // Get the database at the common block
         let common_state = {
             let return_state_or_throw_err =
