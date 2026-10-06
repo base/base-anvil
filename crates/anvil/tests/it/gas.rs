@@ -208,7 +208,23 @@ async fn test_can_use_fee_history() {
             provider.send_transaction(tx.clone()).await.unwrap().get_receipt().await.unwrap();
         assert!(receipt.inner.inner.is_success());
 
-        let fee_history_after = provider.get_fee_history(1, Default::default(), &[]).await.unwrap();
+        // The receipt is available before the fee history service caches the mined block, so poll
+        // until the history covers the receipt's block plus the next base fee.
+        let block_number = receipt.block_number.unwrap();
+        let fee_history_after = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let fee_history =
+                    provider.get_fee_history(1, Default::default(), &[]).await.unwrap();
+                if fee_history.oldest_block == block_number
+                    && fee_history.base_fee_per_gas.len() == 2
+                {
+                    break fee_history;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("fee history did not include the mined block");
         let latest_fee_history_fee = *fee_history_after.base_fee_per_gas.first().unwrap() as u64;
         let latest_block = provider.get_block(BlockId::latest()).await.unwrap().unwrap();
 
