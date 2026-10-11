@@ -7,7 +7,6 @@ use std::{
     fs::{self, File},
     io::{IsTerminal, Read, Seek, Write},
     path::{Path, PathBuf},
-    process::Command,
     sync::LazyLock,
 };
 
@@ -81,19 +80,16 @@ pub fn initialize(target: &Path) {
             let (prj, mut cmd) = setup_forge("template", foundry_compilers::PathStyle::Dapptools);
             test_debug!("- initializing template dir in {}", prj.root().display());
 
-            cmd.args(["init", "--force", "--empty"]).assert_success();
+            cmd.args(["init", "--force", "--empty", "--no-deps"]).assert_success();
             prj.write_config(Config {
                 solc: Some(foundry_config::SolcReq::Version(SOLC_VERSION.parse().unwrap())),
                 ..Default::default()
             });
 
-            // Checkout forge-std.
-            let output = Command::new("git")
-                .current_dir(prj.root().join("lib/forge-std"))
-                .args(["checkout", FORGE_STD_REVISION])
-                .output()
-                .expect("failed to checkout forge-std");
-            assert!(output.status.success(), "{output:#?}");
+            // Pin forge-std through Forge so foundry.lock matches the checkout.
+            cmd.forge_fuse()
+                .args(["install", &format!("foundry-rs/forge-std@{FORGE_STD_REVISION}")])
+                .assert_success();
 
             // Build the project.
             cmd.forge_fuse().arg("build").assert_success();

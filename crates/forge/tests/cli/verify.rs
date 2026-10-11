@@ -2,12 +2,16 @@
 //! and Sourcify.
 
 use crate::utils::{self, EnvExternalities};
+use anvil::{NodeConfig, spawn};
+use axum::{Json, Router, routing::get};
 use foundry_common::retry::Retry;
 use foundry_test_utils::{
     forgetest,
     util::{OutputExt, TestCommand, TestProject},
 };
+use serde_json::json;
 use std::time::Duration;
+use tokio::{net::TcpListener, task::JoinSet};
 
 /// Adds a `Unique` contract to the source directory of the project that can be imported as
 /// `import {Unique} from "./unique.sol";`
@@ -313,7 +317,19 @@ forgetest!(can_verify_random_contract_sepolia_default_sourcify, |prj, cmd| {
 
 // Tests that verify properly validates verifier arguments.
 // <https://github.com/foundry-rs/foundry/issues/11430>
-forgetest_init!(can_validate_verifier_settings, |prj, cmd| {
+forgetest_async!(can_validate_verifier_settings, |prj, cmd| {
+    foundry_test_utils::util::initialize(prj.root());
+    let (_api, handle) = spawn(NodeConfig::test().with_chain_id(Some(4202u64))).await;
+    let rpc_url = handle.http_endpoint();
+    // The verifier only needs an already-verified ABI response for this settings test.
+    let app = Router::new().route(
+        "/api",
+        get(|| async { Json(json!({"status": "1", "message": "OK", "result": "[]"})) }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let verifier_url = format!("http://{}/api", listener.local_addr().unwrap());
+    let mut servers = JoinSet::new();
+    servers.spawn(async move { axum::serve(listener, app).await.unwrap() });
     prj.initialize_default_contracts();
     // Build the project to create the cache.
     cmd.forge_fuse().arg("build").assert_success();
@@ -322,7 +338,7 @@ forgetest_init!(can_validate_verifier_settings, |prj, cmd| {
         .args([
             "verify-contract",
             "--rpc-url",
-            "https://rpc.sepolia-api.lisk.com",
+            &rpc_url,
             "--verifier",
             "blockscout",
             "0x19b248616E4964f43F611b5871CE1250f360E9d3",
@@ -339,7 +355,7 @@ Error: No verifier URL specified for verifier blockscout
         .args([
             "verify-contract",
             "--rpc-url",
-            "https://rpc.sepolia-api.lisk.com",
+            &rpc_url,
             "--verifier",
             "etherscan",
             "0x19b248616E4964f43F611b5871CE1250f360E9d3",
@@ -353,7 +369,7 @@ Error: No known Etherscan API URL for chain `4202`. To fix this, please:
 
 "#]]);
 
-    cmd.forge_fuse().args(["verify-contract", "--rpc-url", "https://rpc.sepolia-api.lisk.com", "--verifier", "blockscout", "--verifier-url", "https://sepolia-blockscout.lisk.com/api", "0x19b248616E4964f43F611b5871CE1250f360E9d3", "src/Counter.sol:Counter"]).assert_success().stdout_eq(str![[r#"
+    cmd.forge_fuse().args(["verify-contract", "--rpc-url", &rpc_url, "--verifier", "blockscout", "--verifier-url", &verifier_url, "0x19b248616E4964f43F611b5871CE1250f360E9d3", "src/Counter.sol:Counter"]).assert_success().stdout_eq(str![[r#"
 Start verifying contract `0x19b248616E4964f43F611b5871CE1250f360E9d3` deployed on 4202
 
 Contract [src/Counter.sol:Counter] "0x19b248616E4964f43F611b5871CE1250f360E9d3" is already verified. Skipping verification.
