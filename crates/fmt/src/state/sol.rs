@@ -2654,11 +2654,7 @@ impl<'ast> State<'_, 'ast> {
             last_span_end = expr.span.hi();
         }
 
-        if self.has_comment_between(last_span_end, limits.hi()) {
-            return true;
-        }
-
-        false
+        self.has_comment_between(last_span_end, limits.hi())
     }
 }
 

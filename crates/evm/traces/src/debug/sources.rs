@@ -200,7 +200,7 @@ impl ContractSources {
                         let stripped = path.strip_prefix(root).unwrap_or(path).to_path_buf();
                         let source_data = Arc::new(SourceData::new(
                             output,
-                            source.content.clone(),
+                            source.content,
                             build.language,
                             stripped,
                             root,
