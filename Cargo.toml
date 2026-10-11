@@ -278,7 +278,7 @@ foundry-compilers = { version = "0.21.0", default-features = false, features = [
     "rustls",
     "svm-solc",
 ] }
-foundry-fork-db = { git = "https://github.com/foundry-rs/foundry-core", rev = "8b3ea9453789ba0d9d8ebf0fc4ee0fed9e4add8f", features = ["zstd"] }
+foundry-fork-db = { git = "https://github.com/foundry-rs/foundry-core", rev = "957d190a53f3e287911ff50cbb55b340a99c2c19", features = ["zstd"] }
 solang-parser = { version = "=0.3.9", package = "foundry-solang-parser" }
 solar = { package = "solar-compiler", version = "=0.1.8", default-features = false }
 svm = { package = "svm-rs", version = "0.5", default-features = false, features = [
@@ -286,33 +286,33 @@ svm = { package = "svm-rs", version = "0.5", default-features = false, features 
 ] }
 
 ## alloy
-alloy-consensus = { version = "2.4.0", default-features = false }
-alloy-contract = { version = "2.4.0", default-features = false }
-alloy-eips = { version = "2.4.0", default-features = false }
-alloy-eip5792 = { version = "2.4.0", default-features = false }
-alloy-ens = { version = "2.4.0", default-features = false }
-alloy-genesis = { version = "2.4.0", default-features = false }
-alloy-json-rpc = { version = "2.4.0", default-features = false }
-alloy-network = { version = "2.4.0", default-features = false }
-alloy-provider = { version = "2.4.0", default-features = false }
-alloy-pubsub = { version = "2.4.0", default-features = false }
-alloy-rpc-client = { version = "2.4.0", default-features = false }
-alloy-rpc-types = { version = "2.4.0", default-features = true }
-alloy-rpc-types-beacon = { version = "2.4.0", default-features = true }
-alloy-rpc-types-engine = { version = "2.4.0", default-features = false }
-alloy-rpc-types-eth = { version = "2.4.0", default-features = false }
-alloy-serde = { version = "2.4.0", default-features = false }
-alloy-signer = { version = "2.4.0", default-features = false }
-alloy-signer-aws = { version = "2.4.0", default-features = false }
-alloy-signer-gcp = { version = "2.4.0", default-features = false }
-alloy-signer-ledger = { version = "2.4.0", default-features = false }
-alloy-signer-local = { version = "2.4.0", default-features = false }
-alloy-signer-trezor = { version = "2.4.0", default-features = false }
-alloy-signer-turnkey = { version = "2.4.0", default-features = false }
-alloy-transport = { version = "2.4.0", default-features = false }
-alloy-transport-http = { version = "2.4.0", default-features = false }
-alloy-transport-ipc = { version = "2.4.0", default-features = false }
-alloy-transport-ws = { version = "2.4.0", default-features = false }
+alloy-consensus = { version = "2.5.0", default-features = false }
+alloy-contract = { version = "2.5.0", default-features = false }
+alloy-eips = { version = "2.5.0", default-features = false }
+alloy-eip5792 = { version = "2.5.0", default-features = false }
+alloy-ens = { version = "2.5.0", default-features = false }
+alloy-genesis = { version = "2.5.0", default-features = false }
+alloy-json-rpc = { version = "2.5.0", default-features = false }
+alloy-network = { version = "2.5.0", default-features = false }
+alloy-provider = { version = "2.5.0", default-features = false }
+alloy-pubsub = { version = "2.5.0", default-features = false }
+alloy-rpc-client = { version = "2.5.0", default-features = false }
+alloy-rpc-types = { version = "2.5.0", default-features = true }
+alloy-rpc-types-beacon = { version = "2.5.0", default-features = true }
+alloy-rpc-types-engine = { version = "2.5.0", default-features = false }
+alloy-rpc-types-eth = { version = "2.5.0", default-features = false }
+alloy-serde = { version = "2.5.0", default-features = false }
+alloy-signer = { version = "2.5.0", default-features = false }
+alloy-signer-aws = { version = "2.5.0", default-features = false }
+alloy-signer-gcp = { version = "2.5.0", default-features = false }
+alloy-signer-ledger = { version = "2.5.0", default-features = false }
+alloy-signer-local = { version = "2.5.0", default-features = false }
+alloy-signer-trezor = { version = "2.5.0", default-features = false }
+alloy-signer-turnkey = { version = "2.5.0", default-features = false }
+alloy-transport = { version = "2.5.0", default-features = false }
+alloy-transport-http = { version = "2.5.0", default-features = false }
+alloy-transport-ipc = { version = "2.5.0", default-features = false }
+alloy-transport-ws = { version = "2.5.0", default-features = false }
 alloy-hardforks = { version = "0.4.8", default-features = false }
 alloy-op-hardforks = { version = "0.5.0", default-features = false }
 
@@ -340,13 +340,13 @@ op-alloy-rpc-types = "2.0.0"
 op-alloy-flz = "0.13.1"
 
 ## alloy-evm
-alloy-evm = "0.38.0"
+alloy-evm = "0.39.0"
 alloy-op-evm = "0.32.0"
 
 # revm
-revm = { version = "42.0.1", default-features = false }
-revm-inspectors = { version = "0.42.2", features = ["serde"] }
-op-revm = { git = "https://github.com/foundry-rs/optimism", rev = "566d19ee21aef0b1235c028bd1a4a98eacb95753", default-features = false }
+revm = { version = "43.0.3", default-features = false }
+revm-inspectors = { version = "0.44.1", features = ["serde"] }
+op-revm = { git = "https://github.com/foundry-rs/optimism", rev = "206d26cedb9d861b983d89fc71e1122187dfa877", default-features = false }
 
 ## cli
 anstream = "0.6"
@@ -511,12 +511,12 @@ rexpect = { git = "https://github.com/rust-cli/rexpect", rev = "2ed0b1898d7edaf6
 # op-revm = { git = "https://github.com/bluealloy/revm.git", rev = "7e59936" }
 # revm-inspectors = { git = "https://github.com/paradigmxyz/revm-inspectors.git", branch = "staging-revm" }
 
-## Pinned to foundry-rs forks for the revm 42 stack.
-alloy-op-evm = { git = "https://github.com/foundry-rs/optimism", rev = "566d19ee21aef0b1235c028bd1a4a98eacb95753" }
-op-alloy-consensus = { git = "https://github.com/foundry-rs/optimism", rev = "566d19ee21aef0b1235c028bd1a4a98eacb95753" }
-op-alloy-network = { git = "https://github.com/foundry-rs/optimism", rev = "566d19ee21aef0b1235c028bd1a4a98eacb95753" }
-op-alloy-rpc-types = { git = "https://github.com/foundry-rs/optimism", rev = "566d19ee21aef0b1235c028bd1a4a98eacb95753" }
-alloy-op-hardforks = { git = "https://github.com/foundry-rs/optimism", rev = "566d19ee21aef0b1235c028bd1a4a98eacb95753" }
+## Pinned to foundry-rs forks for the revm 43 stack.
+alloy-op-evm = { git = "https://github.com/foundry-rs/optimism", rev = "206d26cedb9d861b983d89fc71e1122187dfa877" }
+op-alloy-consensus = { git = "https://github.com/foundry-rs/optimism", rev = "206d26cedb9d861b983d89fc71e1122187dfa877" }
+op-alloy-network = { git = "https://github.com/foundry-rs/optimism", rev = "206d26cedb9d861b983d89fc71e1122187dfa877" }
+op-alloy-rpc-types = { git = "https://github.com/foundry-rs/optimism", rev = "206d26cedb9d861b983d89fc71e1122187dfa877" }
+alloy-op-hardforks = { git = "https://github.com/foundry-rs/optimism", rev = "206d26cedb9d861b983d89fc71e1122187dfa877" }
 
 ## foundry
 # foundry-block-explorers = { git = "https://github.com/foundry-rs/block-explorers.git", rev = "f5b46b2" }
