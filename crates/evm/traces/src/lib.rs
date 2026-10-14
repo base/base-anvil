@@ -382,6 +382,9 @@ impl TraceMode {
         } else {
             TracingInspectorConfig {
                 record_steps: self >= Self::Steps,
+                record_inputs: true,
+                record_bytecode: false,
+                step_limit: None,
                 record_memory_snapshots: self >= Self::Jump,
                 record_stack_snapshots: if self > Self::Steps {
                     StackSnapshotType::Full
@@ -395,6 +398,7 @@ impl TraceMode {
                     .then(|| OpcodeFilter::new().enabled(OpCode::JUMP).enabled(OpCode::JUMPDEST)),
                 exclude_precompile_calls: false,
                 record_immediate_bytes: self.is_debug(),
+                record_step_deltas: false,
             }
             .into()
         }

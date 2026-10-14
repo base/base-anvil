@@ -1,5 +1,7 @@
 //! Anvil is a fast local Ethereum development node.
 
+// RPC futures need additional trait-resolution depth on nightly.
+#![recursion_limit = "256"]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 

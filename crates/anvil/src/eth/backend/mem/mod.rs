@@ -428,7 +428,7 @@ impl Backend {
             for res in genesis_accounts {
                 let (address, mut info) = res.unwrap()?;
                 info.balance = self.genesis.balance;
-                db.insert_account(address, info.clone());
+                db.insert_account(address, info);
             }
         } else {
             let mut db = self.db.write().await;
@@ -1799,7 +1799,7 @@ impl Backend {
                                 data: None,
                             }
                         }),
-                        logs: result.clone()
+                        logs: result
                             .into_logs()
                             .into_iter()
                             .enumerate()
@@ -1816,7 +1816,7 @@ impl Backend {
                             })
                             .collect(),
                     };
-                    logs.extend(sim_res.logs.clone().iter().map(|log| log.inner.clone()));
+                    logs.extend(sim_res.logs.iter().map(|log| log.inner.clone()));
                     log_index += sim_res.logs.len();
                     call_res.push(sim_res);
                 }

@@ -92,8 +92,7 @@ impl<'a> LocalTraceIdentifier<'a> {
 
         // Start at artifacts with the same code length: `len..len*1.1`.
         let same_length_idx = self.find_index(len);
-        for idx in same_length_idx..self.ordered_ids.len() {
-            let (id, len) = self.ordered_ids[idx];
+        for &(id, len) in self.ordered_ids.iter().skip(same_length_idx) {
             if len > max_len {
                 break;
             }
@@ -105,8 +104,7 @@ impl<'a> LocalTraceIdentifier<'a> {
         // Iterate over the remaining artifacts with less code length: `len*0.9..len`.
         let min_len = (len * 9) / 10;
         let idx = self.find_index(min_len);
-        for i in idx..same_length_idx {
-            let (id, _) = self.ordered_ids[i];
+        for &(id, _) in self.ordered_ids.iter().take(same_length_idx).skip(idx) {
             if let found @ Some(_) = check(id, true, &mut min_score) {
                 return found;
             }

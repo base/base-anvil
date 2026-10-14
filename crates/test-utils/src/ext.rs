@@ -140,6 +140,16 @@ impl ExtTester {
             }
         }
 
+        if recursive {
+            // Submodules must match the pinned revision rather than the remote default branch.
+            let status = Command::new("git")
+                .current_dir(root)
+                .args(["submodule", "update", "--init", "--recursive"])
+                .status()
+                .unwrap();
+            assert!(status.success(), "git submodule update failed: {status}");
+        }
+
         (prj, test_cmd)
     }
 
