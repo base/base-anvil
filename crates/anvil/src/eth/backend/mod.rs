@@ -1,5 +1,7 @@
 //! blockchain Backend
 
+pub mod beacon;
+
 /// [`revm`] related types
 pub mod db;
 /// In-memory Backend

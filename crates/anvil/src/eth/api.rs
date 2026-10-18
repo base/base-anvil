@@ -2747,7 +2747,7 @@ impl EthApi {
     pub fn evm_set_time(&self, timestamp: u64) -> Result<u64> {
         node_info!("evm_setTime");
         let now = self.backend.time().current_call_timestamp();
-        self.backend.time().reset(timestamp);
+        self.backend.time().set_time(timestamp)?;
 
         // number of seconds between the given timestamp and the current time.
         let offset = timestamp.saturating_sub(now);
@@ -2768,8 +2768,7 @@ impl EthApi {
     /// Handler for RPC call: `anvil_setBlockTimestampInterval`
     pub fn evm_set_block_timestamp_interval(&self, seconds: u64) -> Result<()> {
         node_info!("anvil_setBlockTimestampInterval");
-        self.backend.time().set_block_timestamp_interval(seconds);
-        Ok(())
+        self.backend.time().set_block_timestamp_interval(seconds)
     }
 
     /// Sets an interval for the block timestamp

@@ -2,6 +2,7 @@ use crate::{
     EthereumHardfork, FeeManager, PrecompileFactory,
     eth::{
         backend::{
+            beacon::ForkBeacon,
             db::{Db, SerializableState},
             env::Env,
             fork::{ClientFork, ClientForkConfig},
@@ -140,6 +141,8 @@ pub struct NodeConfig {
     pub max_transactions: usize,
     /// url of the rpc server that should be used for any rpc calls
     pub eth_rpc_url: Option<String>,
+    /// Historical Beacon endpoint used to serve blobs through the execution fork boundary.
+    pub fork_beacon_url: Option<String>,
     /// pins the block number or transaction hash for the state fork
     pub fork_choice: Option<ForkChoice>,
     /// headers to use with `eth_rpc_url`
@@ -464,6 +467,7 @@ impl Default for NodeConfig {
             port: NODE_PORT,
             max_transactions: 1_000,
             eth_rpc_url: None,
+            fork_beacon_url: None,
             fork_choice: None,
             account_generator: None,
             base_fee: None,
@@ -841,6 +845,13 @@ impl NodeConfig {
         self
     }
 
+    /// Sets the historical Beacon endpoint and enables slot-aligned L1 mining.
+    #[must_use]
+    pub fn with_fork_beacon_url(mut self, url: Option<String>) -> Self {
+        self.fork_beacon_url = url;
+        self
+    }
+
     /// Sets the `fork_choice` to use to fork off from based on a block number
     #[must_use]
     pub fn with_fork_block_number<U: Into<u64>>(self, fork_block_number: Option<U>) -> Self {
@@ -1056,6 +1067,17 @@ impl NodeConfig {
     ///
     /// *Note*: only memory based backend for now
     pub(crate) async fn setup(&mut self) -> Result<mem::Backend> {
+        if self.fork_beacon_url.is_some() {
+            eyre::ensure!(self.eth_rpc_url.is_some(), "fork Beacon requires an execution fork URL");
+            eyre::ensure!(
+                self.transaction_block_keeper.is_none(),
+                "fork Beacon requires retaining block transactions and blob sidecars"
+            );
+            eyre::ensure!(
+                self.fork_choice.is_none_or(|choice| choice.transaction_hash().is_none()),
+                "fork Beacon requires a block boundary, not a transaction boundary"
+            );
+        }
         // configure the revm environment
 
         let mut cfg = CfgEnv::default();
@@ -1283,6 +1305,12 @@ latest block number: {latest_block}"
             eyre::bail!("failed to get block for block number: {fork_block_number}");
         };
 
+        let beacon = if let Some(url) = &self.fork_beacon_url {
+            Some(ForkBeacon::connect(url, self.fork_request_timeout, block.header.timestamp).await?)
+        } else {
+            None
+        };
+
         let gas_limit = self.fork_gas_limit(&block);
         self.gas_limit = Some(gas_limit);
 
@@ -1409,6 +1437,7 @@ latest block number: {latest_block}"
             blob_gas_used: block.header.blob_gas_used.map(|g| g as u128),
             blob_excess_gas_and_price: env.evm_env.block_env.blob_excess_gas_and_price,
             force_transactions,
+            beacon,
         };
 
         debug!(target: "node", fork_number=config.block_number, fork_hash=%config.block_hash, "set up fork db");
