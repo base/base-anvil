@@ -850,7 +850,7 @@ mod tests {
         let args: NodeArgs = NodeArgs::parse_from(["anvil", "--base"]);
         assert_eq!(
             args.evm.networks.base_upgrade(),
-            Some(foundry_evm_networks::BaseUpgrade::Cobalt)
+            Some(foundry_evm_networks::BaseUpgrade::Denim)
         );
     }
 
