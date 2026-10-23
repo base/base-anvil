@@ -58,7 +58,7 @@ const DEFAULT_BASE_ACTIVATION_ADMIN: Address =
 /// `--base` is passed with no value. Deliberately not tied to upstream
 /// `BaseUpgrade::LATEST` (`Beryl`), which lags base-anvil's own release
 /// cadence; bump this alongside `./script/bump-base.sh` as new upgrades land.
-const DEFAULT_BASE_UPGRADE: BaseUpgrade = BaseUpgrade::Cobalt;
+const DEFAULT_BASE_UPGRADE: BaseUpgrade = BaseUpgrade::Denim;
 
 pub mod celo;
 
@@ -118,7 +118,7 @@ pub struct NetworkConfigs {
         long,
         conflicts_with = "celo",
         num_args(0..=1),
-        default_missing_value = "cobalt", // keep in sync with DEFAULT_BASE_UPGRADE
+        default_missing_value = "denim", // keep in sync with DEFAULT_BASE_UPGRADE
     )]
     #[serde(default, with = "base_flag")]
     base: Option<BaseUpgrade>,
@@ -347,10 +347,10 @@ mod tests {
 
     #[test]
     fn default_missing_value_matches_default_base_upgrade() {
-        // Guards against the CLI's `default_missing_value = "cobalt"` string
+        // Guards against the CLI's `default_missing_value = "denim"` string
         // literal drifting from `DEFAULT_BASE_UPGRADE`, since clap can't
         // reference the constant directly.
-        assert_eq!("cobalt".parse::<BaseUpgrade>().unwrap(), DEFAULT_BASE_UPGRADE);
+        assert_eq!("denim".parse::<BaseUpgrade>().unwrap(), DEFAULT_BASE_UPGRADE);
     }
 
     #[test]
