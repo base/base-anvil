@@ -30,7 +30,7 @@
               solc
               vyper
               dprint
-              nodejs
+              nodejs_24
             ];
 
             packages = with pkgs; [ rust-analyzer-unwrapped ];
