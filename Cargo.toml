@@ -313,7 +313,7 @@ alloy-transport = { version = "2.5.0", default-features = false }
 alloy-transport-http = { version = "2.5.0", default-features = false }
 alloy-transport-ipc = { version = "2.5.0", default-features = false }
 alloy-transport-ws = { version = "2.5.0", default-features = false }
-alloy-hardforks = { version = "0.4.8", default-features = false }
+alloy-hardforks = { version = "0.4.11", default-features = false }
 alloy-op-hardforks = { version = "0.5.0", default-features = false }
 
 ## alloy-core
@@ -345,7 +345,7 @@ alloy-op-evm = "0.32.0"
 
 # revm
 revm = { version = "43.0.3", default-features = false }
-revm-inspectors = { version = "0.44.1", features = ["serde"] }
+revm-inspectors = { version = "0.44.3", features = ["serde"] }
 op-revm = { git = "https://github.com/foundry-rs/optimism", rev = "206d26cedb9d861b983d89fc71e1122187dfa877", default-features = false }
 
 ## cli
