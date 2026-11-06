@@ -2,6 +2,9 @@
 
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// Cheatcode doc comments are mirrored verbatim into `Vm.sol` and `cheatcodes.json`, so they use
+// plain-text URLs and `<placeholder>` syntax rather than rustdoc markup.
+#![allow(rustdoc::bare_urls, rustdoc::invalid_html_tags)]
 
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, fmt};
