@@ -4,7 +4,7 @@ ARG USERNAME=foundry
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 ARG PYTHON_VERSION=3.14
-ARG NODE_MAJOR=20
+ARG NODE_MAJOR=24
 ARG VYPER_VERSION=0.4.3
 ARG RUST_VERSION=1.96.0
 
@@ -29,9 +29,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     sudo \
     unzip \
-    # Python
+    # Add the signed Python repository (Jammy does not ship Python 3.14)
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776' \
+        -o /tmp/deadsnakes.asc \
+    && gpg --batch --dearmor -o /etc/apt/keyrings/deadsnakes.gpg /tmp/deadsnakes.asc \
+    && test "$(gpg --show-keys --with-colons /etc/apt/keyrings/deadsnakes.gpg | awk -F: '$1 == "pub" { count++ } $1 == "fpr" && !fingerprint { fingerprint = $10 } END { print count ":" fingerprint }')" = "1:F23C5A6CF475977595C89F51BA6932366A755776" \
+    && rm -f /tmp/deadsnakes.asc \
+    && echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main" \
+        > /etc/apt/sources.list.d/deadsnakes.list \
+    && printf 'Package: *\nPin: release o=LP-PPA-deadsnakes\nPin-Priority: 100\n' \
+        > /etc/apt/preferences.d/deadsnakes \
+    && apt-get update && apt-get install -y --no-install-recommends \
     python${PYTHON_VERSION} \
-    python3-pip \
+    python${PYTHON_VERSION}-dev \
     python${PYTHON_VERSION}-venv \
     # Add Node.js repo
     && mkdir -p /etc/apt/keyrings \
@@ -43,9 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Clean up apt cache
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Ensure python points to the installed python version
-RUN ln -sf /usr/bin/python${PYTHON_VERSION} /usr/bin/python && \
-    ln -sf /usr/bin/python${PYTHON_VERSION} /usr/bin/python3
+# Expose the requested Python without replacing Ubuntu's system python3
+RUN ln -sf /usr/bin/python${PYTHON_VERSION} /usr/bin/python
 
 # Create non-root user with sudo privileges
 RUN groupadd --gid $USER_GID $USERNAME \
@@ -76,11 +86,11 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     && rustup default ${RUST_VERSION} \
     && cargo install cargo-nextest --locked
 
-# Install Vyper using pip
-# Ensure pip user install directory is in PATH
-ENV PYTHONUSERBASE="/home/$USERNAME/.local"
-ENV PATH="$PYTHONUSERBASE/bin:$PATH"
-RUN pip3 install --user vyper==${VYPER_VERSION}
+# Install Vyper in an isolated Python environment
+ENV VIRTUAL_ENV="/home/$USERNAME/.venv"
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+RUN python${PYTHON_VERSION} -m venv "$VIRTUAL_ENV" \
+    && pip install --no-cache-dir vyper==${VYPER_VERSION}
 
 # Switch back to the main workspace directory
 WORKDIR /workspace

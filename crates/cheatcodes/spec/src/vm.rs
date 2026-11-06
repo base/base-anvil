@@ -471,7 +471,7 @@ interface Vm {
     /// Gets the current `block.chainid` of the currently selected environment.
     /// You should use this instead of `block.chainid` if you use `vm.selectFork` or `vm.createSelectFork`, as `block.chainid` could be assumed
     /// to be constant across a transaction, and as a result will get optimized out by the compiler.
-    /// See https://github.com/foundry-rs/foundry/issues/6180
+    /// See <https://github.com/foundry-rs/foundry/issues/6180>
     #[cheatcode(group = Evm, safety = Safe)]
     function getChainId() external view returns (uint256 blockChainId);
 
@@ -523,7 +523,7 @@ interface Vm {
     /// Gets the current `block.number`.
     /// You should use this instead of `block.number` if you use `vm.roll`, as `block.number` is assumed to be constant across a transaction,
     /// and as a result will get optimized out by the compiler.
-    /// See https://github.com/foundry-rs/foundry/issues/6180
+    /// See <https://github.com/foundry-rs/foundry/issues/6180>
     #[cheatcode(group = Evm, safety = Safe)]
     function getBlockNumber() external view returns (uint256 height);
 
@@ -538,7 +538,7 @@ interface Vm {
     /// Gets the current `block.timestamp`.
     /// You should use this instead of `block.timestamp` if you use `vm.warp`, as `block.timestamp` is assumed to be constant across a transaction,
     /// and as a result will get optimized out by the compiler.
-    /// See https://github.com/foundry-rs/foundry/issues/6180
+    /// See <https://github.com/foundry-rs/foundry/issues/6180>
     #[cheatcode(group = Evm, safety = Safe)]
     function getBlockTimestamp() external view returns (uint256 timestamp);
 
@@ -554,7 +554,7 @@ interface Vm {
     /// Gets the current `block.blobbasefee`.
     /// You should use this instead of `block.blobbasefee` if you use `vm.blobBaseFee`, as `block.blobbasefee` is assumed to be constant across a transaction,
     /// and as a result will get optimized out by the compiler.
-    /// See https://github.com/foundry-rs/foundry/issues/6180
+    /// See <https://github.com/foundry-rs/foundry/issues/6180>
     #[cheatcode(group = Evm, safety = Safe)]
     function getBlobBaseFee() external view returns (uint256 blobBaseFee);
 
@@ -1005,7 +1005,7 @@ interface Vm {
     function breakpoint(string calldata char, bool value) external pure;
 
     /// Returns the Foundry version.
-    /// Format: <cargo_version>-<tag>+<git_sha_short>.<unix_build_timestamp>.<profile>
+    /// Format: `<cargo_version>-<tag>+<git_sha_short>.<unix_build_timestamp>.<profile>`
     /// Sample output: 0.3.0-nightly+3cb96bde9b.1737036656.debug
     /// Note: Build timestamps may vary slightly across platforms due to separate CI jobs.
     /// For reliable version comparisons, use UNIX format (e.g., >= 1700000000)
@@ -1923,18 +1923,18 @@ interface Vm {
     function getArtifactPathByDeployedCode(bytes calldata deployedCode) external view returns (string memory path);
 
     /// Gets the creation bytecode from an artifact file. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     #[cheatcode(group = Filesystem)]
     function getCode(string calldata artifactPath) external view returns (bytes memory creationBytecode);
 
     /// Deploys a contract from an artifact file. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     /// Reverts if the target artifact contains unlinked library placeholders.
     #[cheatcode(group = Filesystem)]
     function deployCode(string calldata artifactPath) external returns (address deployedAddress);
 
     /// Deploys a contract from an artifact file. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     /// Reverts if the target artifact contains unlinked library placeholders.
     ///
     /// Additionally accepts abi-encoded constructor arguments.
@@ -1942,7 +1942,7 @@ interface Vm {
     function deployCode(string calldata artifactPath, bytes calldata constructorArgs) external returns (address deployedAddress);
 
     /// Deploys a contract from an artifact file. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     /// Reverts if the target artifact contains unlinked library placeholders.
     ///
     /// Additionally accepts `msg.value`.
@@ -1950,7 +1950,7 @@ interface Vm {
     function deployCode(string calldata artifactPath, uint256 value) external returns (address deployedAddress);
 
     /// Deploys a contract from an artifact file. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     /// Reverts if the target artifact contains unlinked library placeholders.
     ///
     /// Additionally accepts abi-encoded constructor arguments and `msg.value`.
@@ -1958,13 +1958,13 @@ interface Vm {
     function deployCode(string calldata artifactPath, bytes calldata constructorArgs, uint256 value) external returns (address deployedAddress);
 
     /// Deploys a contract from an artifact file, using the CREATE2 salt. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     /// Reverts if the target artifact contains unlinked library placeholders.
     #[cheatcode(group = Filesystem)]
     function deployCode(string calldata artifactPath, bytes32 salt) external returns (address deployedAddress);
 
     /// Deploys a contract from an artifact file, using the CREATE2 salt. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     /// Reverts if the target artifact contains unlinked library placeholders.
     ///
     /// Additionally accepts abi-encoded constructor arguments.
@@ -1972,7 +1972,7 @@ interface Vm {
     function deployCode(string calldata artifactPath, bytes calldata constructorArgs, bytes32 salt) external returns (address deployedAddress);
 
     /// Deploys a contract from an artifact file, using the CREATE2 salt. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     /// Reverts if the target artifact contains unlinked library placeholders.
     ///
     /// Additionally accepts `msg.value`.
@@ -1980,7 +1980,7 @@ interface Vm {
     function deployCode(string calldata artifactPath, uint256 value, bytes32 salt) external returns (address deployedAddress);
 
     /// Deploys a contract from an artifact file, using the CREATE2 salt. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     /// Reverts if the target artifact contains unlinked library placeholders.
     ///
     /// Additionally accepts abi-encoded constructor arguments and `msg.value`.
@@ -1988,7 +1988,7 @@ interface Vm {
     function deployCode(string calldata artifactPath, bytes calldata constructorArgs, uint256 value, bytes32 salt) external returns (address deployedAddress);
 
     /// Gets the deployed bytecode from an artifact file. Takes in the relative path to the json file or the path to the
-    /// artifact in the form of <path>:<contract>:<version> where <contract> and <version> parts are optional.
+    /// artifact in the form of `<path>:<contract>:<version>` where `<contract>` and `<version>` parts are optional.
     #[cheatcode(group = Filesystem)]
     function getDeployedCode(string calldata artifactPath) external view returns (bytes memory runtimeBytecode);
 
